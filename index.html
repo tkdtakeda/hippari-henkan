@@ -1,0 +1,3598 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>引張試験ファイル 変換 ＋ 解析</title>
+<style>
+/* ============================================================
+   デザイントークン（基本設計 7: 見た目の値はトークンから選ぶ）
+   コンポーネント側で生の px / カラーコードは書かない。
+   ============================================================ */
+:root{
+  color-scheme: light;
+
+  /* ---- パレット: メイン = 深い青 ---- */
+  --blue-950:#061a35;
+  --blue-900:#0a2647;
+  --blue-800:#0f3462;
+  --blue-700:#14427c;
+  --blue-600:#1c5596;
+  --blue-500:#2a6db5;
+  --blue-400:#5891cd;
+  --blue-300:#8fb6de;
+  --blue-200:#c2d8ec;
+  --blue-100:#e2ecf7;
+  --blue-050:#f1f6fc;
+
+  /* ---- パレット: アクセント = ティール（青と同系で調和する寒色） ---- */
+  --teal-800:#075353;
+  --teal-700:#0b6a68;
+  --teal-600:#0e807c;
+  --teal-500:#159c95;
+  --teal-100:#dcf1ef;
+
+  /* ---- パレット: 状態色（彩度を落として深い青と調和させる） ---- */
+  --green-700:#15613d;
+  --green-600:#1c7a4d;
+  --green-100:#e1f1e8;
+  --amber-700:#8a5806;
+  --amber-600:#a56a09;
+  --amber-100:#fbeed6;
+  --red-700:#93201a;
+  --red-600:#b3271f;
+  --red-100:#fbe3e1;
+
+  /* ---- パレット: ニュートラル（青みを含ませてベースを調和させる） ---- */
+  --n-0:#ffffff;
+  --n-25:#fafcfe;
+  --n-50:#f4f7fb;
+  --n-100:#eaeff6;
+  --n-200:#dbe3ee;
+  --n-300:#c2cddd;
+  --n-400:#93a2b8;
+  --n-500:#6b7a91;
+  --n-600:#4d5b70;
+  --n-700:#38445a;
+  --n-800:#232e41;
+  --n-900:#141c2a;
+
+  /* ---- セマンティック ---- */
+  --bg: var(--n-50);
+  --surface: var(--n-0);
+  --surface-2: var(--n-25);
+  --surface-sunken: var(--n-100);
+  --border: var(--n-200);
+  --border-strong: var(--n-300);
+  --text: var(--n-800);
+  --text-muted: var(--n-500);
+  --text-on-dark: #ffffff;
+
+  --primary: var(--blue-900);
+  --primary-hover: var(--blue-800);
+  --primary-active: var(--blue-950);
+  --primary-soft: var(--blue-100);
+  --primary-soft-2: var(--blue-050);
+  --primary-text: var(--blue-800);
+  --accent: var(--teal-600);
+  --accent-soft: var(--teal-100);
+  --accent-text: var(--teal-800);
+  --focus: var(--blue-500);
+
+  --ok: var(--green-600);
+  --ok-text: var(--green-700);
+  --ok-bg: var(--green-100);
+  --warn: var(--amber-600);
+  --warn-text: var(--amber-700);
+  --warn-bg: var(--amber-100);
+  --err: var(--red-600);
+  --err-text: var(--red-700);
+  --err-bg: var(--red-100);
+  --na: var(--n-500);
+  --na-bg: var(--n-100);
+
+  /* ---- 余白 ---- */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --sp-7:48px;
+
+  /* ---- 角丸 ---- */
+  --r-1:4px; --r-2:8px; --r-3:12px; --r-pill:999px;
+
+  /* ---- 文字 ---- */
+  --font: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", "Meiryo",
+          -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", "Consolas", "Roboto Mono", "Courier New", monospace;
+  --fs-1:11px; --fs-2:12px; --fs-3:13px; --fs-4:15px; --fs-5:18px; --fs-6:21px;
+  --lh-tight:1.25; --lh:1.55;
+  --fw-normal:400; --fw-med:600; --fw-bold:700;
+
+  /* ---- 高さ ---- */
+  --h-ctl:30px; --h-ctl-lg:38px; --h-appbar:66px; --h-tab:38px;
+
+  /* ---- 影 ---- */
+  --sh-1: 0 1px 2px rgba(10,38,71,.06), 0 1px 1px rgba(10,38,71,.04);
+  --sh-2: 0 2px 8px rgba(10,38,71,.10);
+  --sh-3: 0 12px 32px rgba(10,38,71,.20);
+  --ring: 0 0 0 3px rgba(42,109,181,.35);
+
+  /* ---- モーション ---- */
+  --dur-1:110ms; --dur-2:180ms; --ease: cubic-bezier(.2,.6,.2,1);
+
+  /* ---- レイアウト ---- */
+  --rail-w: 296px;
+  --gap: var(--sp-4);
+  --w-select: 170px;
+  --w-search: 220px;
+
+  /* ---- 線図 ---- */
+  --chart-pad-l:60; --chart-pad-r:14; --chart-pad-t:12; --chart-pad-b:38;
+  --chart-fs:11;
+  --chart-ink: var(--n-700);
+  --chart-grid: var(--n-200);
+  --chart-axis: var(--n-400);
+  --chart-line: var(--blue-700);
+  --chart-line-2: var(--blue-400);
+  --chart-fit: var(--teal-600);
+  --chart-offset: var(--amber-600);
+  --chart-yield: var(--teal-700);
+  --chart-fracture: var(--red-600);
+  --chart-band: rgba(42,109,181,.10);
+  --chart-halo: var(--n-0);
+}
+
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#0b1524;
+    --surface:#131f31;
+    --surface-2:#16243a;
+    --surface-sunken:#0e1a2b;
+    --border:#25364e;
+    --border-strong:#33475f;
+    --text:#e6edf6;
+    --text-muted:#9fb0c6;
+
+    --primary: var(--blue-400);
+    --primary-hover: var(--blue-300);
+    --primary-active: var(--blue-500);
+    --primary-soft:#17304f;
+    --primary-soft-2:#132741;
+    --primary-text: var(--blue-200);
+    --text-on-dark: #06121f;
+    --accent: var(--teal-500);
+    --accent-soft:#0d3a3a;
+    --accent-text:#8fd8d2;
+    --focus: var(--blue-300);
+
+    --ok:#4fbf85; --ok-text:#8fdcb2; --ok-bg:#0f3527;
+    --warn:#d9a441; --warn-text:#efc97f; --warn-bg:#3a2d0f;
+    --err:#e2685f; --err-text:#f2a29b; --err-bg:#3b1714;
+    --na:#8496ad; --na-bg:#1b2942;
+
+    --sh-1: 0 1px 2px rgba(0,0,0,.45);
+    --sh-2: 0 2px 10px rgba(0,0,0,.5);
+    --sh-3: 0 14px 34px rgba(0,0,0,.6);
+    --ring: 0 0 0 3px rgba(143,182,222,.4);
+
+    --chart-ink:#c3d2e5;
+    --chart-grid:#25364e;
+    --chart-axis:#4a5e7a;
+    --chart-line: var(--blue-300);
+    --chart-line-2: var(--blue-500);
+    --chart-fit: var(--teal-500);
+    --chart-offset:#d9a441;
+    --chart-yield: var(--teal-500);
+    --chart-fracture:#e2685f;
+    --chart-band: rgba(143,182,222,.12);
+    --chart-halo:#131f31;
+  }
+}
+
+@media (prefers-reduced-motion: reduce){
+  :root{ --dur-1:0ms; --dur-2:0ms; }
+}
+
+/* ============================================================
+   ベース
+   ============================================================ */
+*,*::before,*::after{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0; overflow:hidden;                 /* レイアウト方針: ページ自体はスクロールさせない */
+  font-family:var(--font); font-size:var(--fs-3); line-height:var(--lh);
+  color:var(--text); background:var(--bg);
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,p,figure,dl,dd{ margin:0; }
+button,input,select,textarea{ font:inherit; color:inherit; }
+:focus-visible{ outline:none; box-shadow:var(--ring); border-radius:var(--r-1); }
+.sr-only{
+  position:absolute; width:1px; height:1px; margin:-1px; padding:0;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+}
+.muted{ color:var(--text-muted); }
+.num{ font-variant-numeric: tabular-nums; }
+.mono{ font-family:var(--font-mono); font-size:var(--fs-2); }
+.truncate{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ============================================================
+   アプリ枠（100dvh・スクロールレス）
+   ============================================================ */
+.app{
+  height:100dvh; display:grid; grid-template-rows:auto minmax(0,1fr);
+}
+
+/* ---- アプリバー ---- */
+.appbar{
+  display:flex; align-items:center; gap:var(--sp-4);
+  min-height:var(--h-appbar); padding:var(--sp-2) var(--sp-4);
+  background:var(--primary); color:var(--text-on-dark);
+  border-bottom:1px solid var(--primary-active);
+}
+@media (prefers-color-scheme: dark){
+  .appbar{ background:var(--surface); color:var(--text); border-bottom-color:var(--border); }
+}
+.appbar__title{ display:flex; align-items:center; gap:var(--sp-3); min-width:0; }
+.mark{
+  display:grid; place-items:center; width:34px; height:34px; flex:none;
+  border-radius:var(--r-2); background:rgba(255,255,255,.14);
+}
+@media (prefers-color-scheme: dark){ .mark{ background:var(--primary-soft); } }
+.mark svg{ width:22px; height:22px; }
+.appbar h1{ font-size:var(--fs-4); font-weight:var(--fw-bold); line-height:var(--lh-tight); letter-spacing:.02em; }
+.appbar__sub{ font-size:var(--fs-1); opacity:.78; line-height:var(--lh-tight); margin-top:2px; }
+.appbar__actions{ margin-left:auto; display:flex; align-items:center; gap:var(--sp-3); }
+
+/* 主要動作（CTA）は常にここ 1 つ。位置固定・ラベルだけが状態で変わる。 */
+.cta-wrap{ display:flex; flex-direction:column; align-items:flex-end; gap:2px; max-width:420px; }
+.cta-note{ font-size:var(--fs-1); opacity:.8; text-align:right; line-height:var(--lh-tight); }
+@media (prefers-color-scheme: dark){ .cta-note{ color:var(--text-muted); opacity:1; } }
+
+/* ---- ボタン ---- */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:var(--sp-2);
+  height:var(--h-ctl); padding:0 var(--sp-3); white-space:nowrap;
+  border:1px solid transparent; border-radius:var(--r-2); background:transparent;
+  font-size:var(--fs-3); font-weight:var(--fw-med); cursor:pointer;
+  transition:background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.btn svg{ width:15px; height:15px; flex:none; }
+.btn--primary{
+  height:var(--h-ctl-lg); padding:0 var(--sp-5);
+  background:var(--n-0); color:var(--primary); font-weight:var(--fw-bold);
+  box-shadow:var(--sh-1);
+}
+.btn--primary:hover:not(:disabled){ background:var(--blue-050); }
+.btn--primary:active:not(:disabled){ background:var(--blue-100); }
+@media (prefers-color-scheme: dark){
+  .btn--primary{ background:var(--primary); color:var(--text-on-dark); }
+  .btn--primary:hover:not(:disabled){ background:var(--primary-hover); }
+}
+.btn--ghost{ border-color:rgba(255,255,255,.34); color:var(--text-on-dark); }
+.btn--ghost:hover:not(:disabled){ background:rgba(255,255,255,.14); }
+@media (prefers-color-scheme: dark){
+  .btn--ghost{ border-color:var(--border-strong); color:var(--text); }
+  .btn--ghost:hover:not(:disabled){ background:var(--surface-2); }
+}
+.btn--plain{ border-color:var(--border-strong); background:var(--surface); color:var(--text); }
+.btn--plain:hover:not(:disabled){ background:var(--surface-sunken); }
+.btn--accent{ background:var(--accent); color:#fff; }
+.btn--accent:hover:not(:disabled){ background:var(--teal-700); }
+.btn--icon{ width:var(--h-ctl); padding:0; }
+.btn--sm{ height:26px; padding:0 var(--sp-2); font-size:var(--fs-2); }
+.btn:disabled{ opacity:.45; cursor:not-allowed; }
+
+/* ---- チップ（分割ダウンロードなどの副次操作） ---- */
+.chips{ display:flex; flex-wrap:wrap; gap:var(--sp-2); }
+.chip{
+  display:inline-flex; align-items:center; gap:var(--sp-2);
+  height:var(--h-ctl); padding:0 var(--sp-3);
+  border:1px solid var(--border-strong); border-radius:var(--r-pill);
+  background:var(--surface); color:var(--text); font-size:var(--fs-2); cursor:pointer;
+  transition:background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.chip:hover:not(:disabled){ background:var(--primary-soft-2); border-color:var(--primary); }
+.chip:disabled{ opacity:.5; cursor:not-allowed; }
+.chip svg{ width:14px; height:14px; color:var(--primary); flex:none; }
+.chip span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chip__size{ color:var(--text-muted); font-variant-numeric:tabular-nums; flex:none; }
+.chips{ min-width:0; }
+
+/* ---- メニュー（危ない操作はここへ退避） ---- */
+.menu-wrap{ position:relative; }
+.menu{
+  position:absolute; right:0; top:calc(100% + var(--sp-2)); z-index:60;
+  min-width:260px; padding:var(--sp-2);
+  background:var(--surface); color:var(--text);
+  border:1px solid var(--border); border-radius:var(--r-2); box-shadow:var(--sh-3);
+}
+.menu[hidden]{ display:none; }
+.menu button{
+  display:flex; width:100%; align-items:center; gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3); border:0; border-radius:var(--r-1);
+  background:transparent; text-align:left; font-size:var(--fs-3); cursor:pointer;
+}
+.menu button:hover{ background:var(--surface-sunken); }
+.menu button:disabled{ opacity:.45; cursor:not-allowed; }
+.menu hr{ border:0; border-top:1px solid var(--border); margin:var(--sp-2) 0; }
+.menu__danger{ color:var(--err-text); }
+.menu__note{ padding:0 var(--sp-3) var(--sp-2); font-size:var(--fs-1); color:var(--text-muted); }
+
+/* ============================================================
+   レイアウト本体
+   ============================================================ */
+.layout{
+  display:grid; grid-template-columns:var(--rail-w) minmax(0,1fr);
+  gap:var(--gap); padding:var(--gap); min-height:0;
+}
+.layout[data-empty="true"]{ grid-template-columns:minmax(0,1fr); }
+.layout[data-empty="true"] .rail{ display:none; }
+
+/* ---- 左レール（入力・ファイル一覧） ---- */
+.rail{
+  display:grid; grid-template-rows:auto minmax(0,1fr) auto; min-height:0;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-3);
+  box-shadow:var(--sh-1); overflow:hidden;
+}
+.rail__head{ padding:var(--sp-3); border-bottom:1px solid var(--border); }
+.rail__scroll{ overflow-y:auto; padding:var(--sp-2); display:flex; flex-direction:column; gap:var(--sp-2); }
+.rail__foot{
+  padding:var(--sp-2) var(--sp-3); border-top:1px solid var(--border);
+  background:var(--surface-2); font-size:var(--fs-1); color:var(--text-muted);
+}
+
+.fileitem{
+  display:grid; grid-template-columns:auto minmax(0,1fr); gap:2px var(--sp-2);
+  width:100%; padding:var(--sp-2) var(--sp-3); text-align:left; cursor:pointer;
+  border:1px solid var(--border); border-radius:var(--r-2); background:var(--surface);
+  transition:background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.fileitem:hover{ background:var(--primary-soft-2); }
+.fileitem[aria-selected="true"]{
+  border-color:var(--primary); background:var(--primary-soft-2);
+  box-shadow:inset 3px 0 0 var(--primary);
+}
+.fileitem__name{ grid-column:1 / -1; font-weight:var(--fw-med); font-size:var(--fs-3); }
+.fileitem__meta{ grid-column:1 / -1; font-size:var(--fs-1); color:var(--text-muted); }
+.fileitem__st{ grid-column:1 / -1; }
+
+/* ---- 状態表示（アイコン＋文字＋色の三重表現） ---- */
+.status{
+  display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
+  font-size:var(--fs-1); font-weight:var(--fw-med); line-height:1.4;
+  padding:1px var(--sp-2); border-radius:var(--r-pill); border:1px solid transparent;
+}
+.status svg{ width:12px; height:12px; flex:none; }
+.status--ok{ color:var(--ok-text); background:var(--ok-bg); border-color:color-mix(in srgb, var(--ok) 35%, transparent); }
+.status--warn{ color:var(--warn-text); background:var(--warn-bg); border-color:color-mix(in srgb, var(--warn) 35%, transparent); }
+.status--err{ color:var(--err-text); background:var(--err-bg); border-color:color-mix(in srgb, var(--err) 35%, transparent); }
+.status--na{ color:var(--text-muted); background:var(--na-bg); border-color:var(--border); }
+.status--busy{ color:var(--primary-text); background:var(--primary-soft); border-color:var(--blue-300); }
+
+/* ---- ドロップゾーン ---- */
+.dropzone{
+  display:grid; place-items:center; gap:var(--sp-2); text-align:center;
+  padding:var(--sp-4); border:2px dashed var(--border-strong); border-radius:var(--r-2);
+  background:var(--surface-2); color:var(--text-muted); font-size:var(--fs-2);
+  transition:border-color var(--dur-2) var(--ease), background var(--dur-2) var(--ease);
+}
+.dropzone.is-drag{ border-color:var(--primary); background:var(--primary-soft); color:var(--primary-text); }
+.dropzone--hero{
+  padding:var(--sp-7) var(--sp-5); gap:var(--sp-4); border-radius:var(--r-3);
+  font-size:var(--fs-4); max-width:640px; width:100%;
+}
+.dropzone--hero svg{ width:52px; height:52px; color:var(--primary); }
+.dropzone__title{ font-size:var(--fs-5); font-weight:var(--fw-bold); color:var(--text); }
+
+/* ---- 空状態（初回は「入れる」ことが最重要なので面積を大きく） ---- */
+.empty{
+  display:grid; place-items:center; align-content:center; gap:var(--sp-5);
+  height:100%; padding:var(--sp-5);
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-3); box-shadow:var(--sh-1);
+  overflow-y:auto;
+}
+.empty__points{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:var(--sp-3);
+  max-width:900px; width:100%;
+}
+.empty__point{
+  padding:var(--sp-3); border:1px solid var(--border); border-radius:var(--r-2);
+  background:var(--surface-2); font-size:var(--fs-2); color:var(--text-muted);
+}
+.empty__point b{ display:block; color:var(--text); font-size:var(--fs-3); margin-bottom:2px; }
+
+/* ============================================================
+   ステージ（右側・単票／一覧）
+   ============================================================ */
+.stage{ min-width:0; min-height:0; display:grid; }
+/* グリッド／フレックスの子は既定で min-width:auto のため、明示的に潰れられるようにする
+   （これが無いと表やチップの実寸で列が広がり、ページ全体が横スクロールしてしまう） */
+.stage > *, .ws > *, .cols > *, .charts > *, .charts__row > *, .card, .chartcard, .panel > *{ min-width:0; }
+.ws{
+  display:grid; grid-template-rows:auto auto auto minmax(0,1fr); min-height:0; min-width:0;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-3);
+  box-shadow:var(--sh-1); overflow:hidden;
+}
+.ws__head{
+  display:flex; align-items:flex-start; gap:var(--sp-4);
+  padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--border); background:var(--surface-2);
+}
+.ws__id{ min-width:0; flex:1; }
+.ws__name{ font-size:var(--fs-5); font-weight:var(--fw-bold); line-height:var(--lh-tight); }
+.ws__meta{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); margin-top:var(--sp-1); }
+.badge{
+  display:inline-flex; align-items:center; gap:4px;
+  padding:1px var(--sp-2); border-radius:var(--r-1); border:1px solid var(--border);
+  background:var(--surface); font-size:var(--fs-1); color:var(--text-muted);
+}
+.badge--fmt{ background:var(--primary-soft); border-color:var(--blue-300); color:var(--primary-text); font-weight:var(--fw-bold); }
+.badge b{ color:var(--text); font-variant-numeric:tabular-nums; }
+
+/* ---- 表示切替（単票 / 一覧） ---- */
+.seg{ display:inline-flex; padding:2px; gap:2px; background:var(--surface-sunken); border-radius:var(--r-2); border:1px solid var(--border); }
+.seg button{
+  height:26px; padding:0 var(--sp-3); border:0; border-radius:var(--r-1);
+  background:transparent; font-size:var(--fs-2); font-weight:var(--fw-med); cursor:pointer; color:var(--text-muted);
+}
+.seg button[aria-pressed="true"]{ background:var(--surface); color:var(--primary-text); box-shadow:var(--sh-1); }
+
+/* ---- 判定バナー ---- */
+.verdict{
+  display:flex; align-items:center; gap:var(--sp-3);
+  padding:var(--sp-2) var(--sp-4); border-bottom:1px solid var(--border); font-size:var(--fs-3);
+}
+.verdict__icon{ display:grid; place-items:center; width:24px; height:24px; border-radius:var(--r-pill); flex:none; }
+.verdict__icon svg{ width:15px; height:15px; }
+.verdict__label{ font-weight:var(--fw-bold); white-space:nowrap; }
+.verdict__why{ color:var(--text-muted); font-size:var(--fs-2); min-width:0; flex:1; }
+.verdict--ok{ background:var(--ok-bg); color:var(--ok-text); }
+.verdict--ok .verdict__icon{ background:var(--ok); color:#fff; }
+.verdict--warn{ background:var(--warn-bg); color:var(--warn-text); }
+.verdict--warn .verdict__icon{ background:var(--warn); color:#fff; }
+.verdict--ng{ background:var(--err-bg); color:var(--err-text); }
+.verdict--ng .verdict__icon{ background:var(--err); color:#fff; }
+.verdict--na{ background:var(--na-bg); color:var(--text-muted); }
+.verdict--na .verdict__icon{ background:var(--na); color:#fff; }
+.verdict--ok .verdict__why,.verdict--warn .verdict__why,.verdict--ng .verdict__why{ color:inherit; opacity:.85; }
+
+/* ---- タブ ---- */
+.tabs{
+  display:flex; align-items:stretch; gap:var(--sp-1); padding:0 var(--sp-3);
+  border-bottom:1px solid var(--border); background:var(--surface); overflow-x:auto;
+}
+.tab{
+  position:relative; height:var(--h-tab); padding:0 var(--sp-3); border:0; background:transparent;
+  font-size:var(--fs-3); font-weight:var(--fw-med); color:var(--text-muted); cursor:pointer; white-space:nowrap;
+}
+.tab:hover:not(:disabled){ color:var(--text); }
+.tab[aria-selected="true"]{ color:var(--primary-text); }
+.tab[aria-selected="true"]::after{
+  content:""; position:absolute; left:var(--sp-2); right:var(--sp-2); bottom:-1px; height:3px;
+  background:var(--primary); border-radius:var(--r-1) var(--r-1) 0 0;
+}
+.tab:disabled{ opacity:.4; cursor:not-allowed; }
+.tab .count{ font-variant-numeric:tabular-nums; opacity:.75; }
+.tabs__note{
+  padding:var(--sp-1) var(--sp-4); font-size:var(--fs-1); color:var(--text-muted);
+  background:var(--surface-2); border-bottom:1px solid var(--border);
+}
+
+/* ---- パネル（内側だけスクロール） ---- */
+.panel{ min-height:0; overflow:auto; padding:var(--sp-4); }
+.panel[hidden]{ display:none; }
+.panel--fixed{ overflow:hidden; display:grid; }
+
+.cols{ display:grid; gap:var(--gap); align-items:start; }
+.cols--2{ grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); }
+.cols--3{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+@media (max-width:1180px){ .cols--2,.cols--3{ grid-template-columns:minmax(0,1fr); } }
+
+/* ---- カード ---- */
+.card{ border:1px solid var(--border); border-radius:var(--r-2); background:var(--surface); overflow:hidden; }
+.card--fill{ display:grid; grid-template-rows:auto minmax(0,1fr) auto; min-height:0; height:100%; }
+.card--fill .card__body{ min-height:0; overflow:hidden; }
+.card--fill .table-wrap{ height:100%; max-height:100%; }
+.card + .card{ margin-top:var(--gap); }
+.card__head{
+  display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap;
+  padding:var(--sp-2) var(--sp-3); background:var(--surface-2); border-bottom:1px solid var(--border);
+}
+.card__title{ font-size:var(--fs-3); font-weight:var(--fw-bold); }
+.card__title .unit{ font-weight:var(--fw-normal); color:var(--text-muted); }
+.card__tools{ margin-left:auto; display:flex; gap:var(--sp-2); align-items:center; flex-wrap:wrap; justify-content:flex-end; min-width:0; }
+.card__body{ padding:var(--sp-3); }
+.card__body--flush{ padding:0; }
+.card__note{
+  padding:var(--sp-2) var(--sp-3); border-top:1px solid var(--border);
+  background:var(--surface-2); font-size:var(--fs-1); color:var(--text-muted);
+}
+
+/* ---- 表 ---- */
+.table-wrap{ overflow:auto; max-height:100%; }
+table.tbl{ width:100%; border-collapse:collapse; font-size:var(--fs-2); }
+.tbl th,.tbl td{ padding:var(--sp-2) var(--sp-3); text-align:left; border-bottom:1px solid var(--border); vertical-align:top; }
+.tbl thead th{
+  position:sticky; top:0; z-index:2; background:var(--surface-sunken);
+  font-size:var(--fs-1); font-weight:var(--fw-bold); color:var(--text-muted);
+  white-space:nowrap; border-bottom:1px solid var(--border-strong);
+}
+.tbl tbody tr:last-child td{ border-bottom:0; }
+.tbl tbody tr:hover{ background:var(--primary-soft-2); }
+.tbl td.n,.tbl th.n{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.tbl td.k{ color:var(--text-muted); white-space:nowrap; }
+.tbl .src{ color:var(--text-muted); font-size:var(--fs-1); }
+.tbl .empty-val{ color:var(--text-muted); }
+th.sortable{ cursor:pointer; user-select:none; }
+th.sortable:hover{ color:var(--text); }
+th.sortable .arrow{ opacity:.4; }
+th[aria-sort] .arrow{ opacity:1; color:var(--primary); }
+tr.rowlink{ cursor:pointer; }
+
+/* ---- 主要値カード ---- */
+.stats{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:var(--sp-3); }
+.stat{
+  padding:var(--sp-3); border:1px solid var(--border); border-radius:var(--r-2);
+  background:var(--surface-2); min-width:0;
+}
+.stat--hero{ background:var(--primary-soft-2); border-color:var(--blue-300); }
+.stat__label{ font-size:var(--fs-1); color:var(--text-muted); font-weight:var(--fw-med); }
+.stat__value{
+  display:flex; align-items:baseline; gap:var(--sp-1); margin-top:2px;
+  font-size:var(--fs-6); font-weight:var(--fw-bold); font-variant-numeric:tabular-nums; color:var(--primary-text);
+  line-height:var(--lh-tight);
+}
+.stat__value .unit{ font-size:var(--fs-2); font-weight:var(--fw-med); color:var(--text-muted); }
+.stat__value.is-na{ font-size:var(--fs-4); color:var(--text-muted); }
+.stat__basis{ margin-top:var(--sp-1); font-size:var(--fs-1); color:var(--text-muted); line-height:1.45; }
+
+/* ---- 定義リスト ---- */
+.kv{ display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--sp-1) var(--sp-3); font-size:var(--fs-2); }
+.kv dt{ color:var(--text-muted); white-space:nowrap; }
+.kv dd{ font-variant-numeric:tabular-nums; word-break:break-all; }
+
+/* ---- 判定チェック ---- */
+.checks{ display:flex; flex-direction:column; gap:var(--sp-2); }
+.check{ display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--sp-2); align-items:start; font-size:var(--fs-2); }
+.check__body b{ display:block; font-size:var(--fs-3); }
+
+/* ---- フォーム ---- */
+.fields{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:var(--sp-3); }
+.field{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.field__label{ font-size:var(--fs-1); color:var(--text-muted); font-weight:var(--fw-med); }
+.field__hint{ font-size:var(--fs-1); color:var(--text-muted); }
+.input,.select{
+  height:var(--h-ctl); padding:0 var(--sp-2); width:100%;
+  border:1px solid var(--border-strong); border-radius:var(--r-1);
+  background:var(--surface); font-size:var(--fs-3); font-variant-numeric:tabular-nums;
+}
+.input--search{ width:var(--w-search); }
+.select--axis{ width:var(--w-select); }
+.input:focus,.select:focus{ border-color:var(--primary); }
+.input:disabled,.select:disabled{ background:var(--surface-sunken); color:var(--text-muted); cursor:not-allowed; }
+.check-line{ display:flex; align-items:center; gap:var(--sp-2); font-size:var(--fs-3); }
+.check-line input{ width:16px; height:16px; accent-color:var(--primary); }
+
+/* ---- 線図 ---- */
+.charts{ display:grid; gap:var(--gap); min-height:0; grid-template-rows:auto minmax(0,1fr); }
+.charts__row{ display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:var(--gap); min-height:0; }
+@media (max-width:1180px){ .charts__row{ grid-template-columns:minmax(0,1fr); grid-auto-rows:minmax(240px,1fr); } }
+.chartcard{ display:grid; grid-template-rows:auto minmax(0,1fr) auto; min-height:0; }
+/* キャンバスは絶対配置にして「自分の幅がグリッド列幅を押し広げる」ループを断つ */
+.chart-host{ position:relative; min-height:0; min-width:0; overflow:hidden; }
+.chart-host canvas{ position:absolute; inset:0; display:block; }
+.chart__tip{
+  position:absolute; z-index:5; pointer-events:none; transform:translate(-50%,-100%);
+  padding:var(--sp-1) var(--sp-2); border-radius:var(--r-1);
+  background:var(--n-900); color:#fff; font-size:var(--fs-1); white-space:nowrap;
+  font-variant-numeric:tabular-nums; box-shadow:var(--sh-2);
+}
+.legend{ display:flex; flex-wrap:wrap; gap:var(--sp-3); padding:var(--sp-2) var(--sp-3); border-top:1px solid var(--border); background:var(--surface-2); }
+.legend-item{ display:inline-flex; align-items:center; gap:var(--sp-2); font-size:var(--fs-1); color:var(--text-muted); }
+.legend-item svg{ width:22px; height:12px; flex:none; }
+.legend-item b{ color:var(--text); font-weight:var(--fw-med); }
+
+/* ---- 空メッセージ / 理由表示 ---- */
+.reason{
+  display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--sp-3);
+  padding:var(--sp-3); border:1px solid var(--border); border-left:3px solid var(--na);
+  border-radius:var(--r-2); background:var(--surface-2); font-size:var(--fs-2); color:var(--text-muted);
+}
+.reason b{ display:block; color:var(--text); font-size:var(--fs-3); margin-bottom:2px; }
+.reason--warn{ border-left-color:var(--warn); }
+.reason--err{ border-left-color:var(--err); }
+.reason svg{ width:18px; height:18px; color:var(--na); }
+.reason--warn svg{ color:var(--warn); }
+.reason--err svg{ color:var(--err); }
+
+/* ============================================================
+   ドロップ全面オーバーレイ
+   ============================================================ */
+.dropoverlay{
+  position:fixed; inset:0; z-index:80; display:grid; place-items:center;
+  background:color-mix(in srgb, var(--primary) 72%, transparent); color:#fff;
+  font-size:var(--fs-6); font-weight:var(--fw-bold); letter-spacing:.04em;
+}
+.dropoverlay[hidden]{ display:none; }
+.dropoverlay div{ display:grid; place-items:center; gap:var(--sp-3); padding:var(--sp-6) var(--sp-7);
+  border:3px dashed rgba(255,255,255,.7); border-radius:var(--r-3); }
+.dropoverlay svg{ width:56px; height:56px; }
+.dropoverlay small{ font-size:var(--fs-3); font-weight:var(--fw-normal); opacity:.9; }
+
+/* ============================================================
+   トースト（取り消し）
+   ============================================================ */
+.toast-area{
+  position:fixed; left:50%; bottom:var(--sp-5); transform:translateX(-50%);
+  z-index:90; display:flex; flex-direction:column; gap:var(--sp-2); align-items:center;
+}
+.toast{
+  display:flex; align-items:center; gap:var(--sp-3);
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--r-2);
+  background:var(--n-900); color:#fff; font-size:var(--fs-3); box-shadow:var(--sh-3);
+  animation:toast-in var(--dur-2) var(--ease);
+}
+.toast button{
+  height:26px; padding:0 var(--sp-3); border:1px solid rgba(255,255,255,.5); border-radius:var(--r-1);
+  background:transparent; color:#fff; font-size:var(--fs-2); font-weight:var(--fw-bold); cursor:pointer;
+}
+.toast button:hover{ background:rgba(255,255,255,.16); }
+@keyframes toast-in{ from{ opacity:0; transform:translateY(8px);} to{ opacity:1; transform:none;} }
+
+/* ============================================================
+   設定ダイアログ
+   ============================================================ */
+dialog{
+  width:min(860px, 94vw); max-height:88dvh; padding:0; border:0; border-radius:var(--r-3);
+  background:var(--surface); color:var(--text); box-shadow:var(--sh-3);
+}
+dialog::backdrop{ background:rgba(6,26,53,.55); }
+.dlg{ display:grid; grid-template-rows:auto minmax(0,1fr) auto; max-height:88dvh; }
+.dlg__head{ display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--border); }
+.dlg__title{ font-size:var(--fs-5); font-weight:var(--fw-bold); }
+.dlg__body{ overflow:auto; padding:var(--sp-4); display:flex; flex-direction:column; gap:var(--gap); }
+.dlg__body > *{ flex:none; }   /* スクロール領域内で各カードが潰れないようにする */
+.dlg__body .fields{ align-items:end; }
+.dlg__foot{ display:flex; align-items:center; gap:var(--sp-2); padding:var(--sp-3) var(--sp-4); border-top:1px solid var(--border); background:var(--surface-2); }
+.dlg__foot .spacer{ margin-left:auto; }
+
+/* ============================================================
+   狭い画面（レールを上部に畳む）
+   ============================================================ */
+@media (max-width:900px){
+  .layout{ grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
+  .rail{ grid-template-rows:auto auto; }
+  .rail__scroll{ flex-direction:row; overflow-x:auto; overflow-y:hidden; }
+  .rail__scroll .fileitem{ min-width:240px; }
+  .rail__foot{ display:none; }
+  .appbar{ flex-wrap:wrap; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ アプリバー ============ -->
+  <header class="appbar">
+    <div class="appbar__title">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 20h18"/><path d="M3 20V4"/>
+          <path d="M4 17c2.2 0 3.2-8 5-8s2.4 5 4 5 3.2-3 7-9"/>
+        </svg>
+      </span>
+      <div>
+        <h1>引張試験ファイル 変換 ＋ 解析</h1>
+        <p class="appbar__sub">.xtux / .vtav / .csv → CSV・線図・機械的特性値　｜　通信なし・ブラウザ内で完結</p>
+      </div>
+    </div>
+
+    <div class="appbar__actions">
+      <button class="btn btn--ghost" id="btnSettings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        設定
+      </button>
+
+      <div class="menu-wrap">
+        <button class="btn btn--ghost btn--icon" id="btnMore" aria-haspopup="menu" aria-expanded="false" title="その他の操作">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+          <span class="sr-only">その他の操作</span>
+        </button>
+        <div class="menu" id="moreMenu" role="menu" hidden>
+          <button role="menuitem" data-act="export-settings">設定を JSON で書き出す</button>
+          <button role="menuitem" data-act="import-settings">設定を JSON から読み込む</button>
+          <hr>
+          <button role="menuitem" data-act="clear-results" id="miClearResults">変換結果だけを消す（入力は残す）</button>
+          <button role="menuitem" class="menu__danger" data-act="clear-all" id="miClearAll">すべて削除</button>
+          <p class="menu__note">削除は実行後に「取り消し」できます。</p>
+        </div>
+      </div>
+
+      <!-- 主要動作は常にこの 1 つ（位置固定・ラベルだけが変わる） -->
+      <div class="cta-wrap">
+        <button class="btn btn--primary" id="cta" aria-describedby="ctaNote"></button>
+        <p class="cta-note" id="ctaNote"></p>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ 本体 ============ -->
+  <div class="layout" id="layout" data-empty="true">
+    <aside class="rail" aria-label="入力ファイル">
+      <div class="rail__head">
+        <div class="dropzone" id="dzMini" tabindex="0" role="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          ファイルを追加（ドロップ / クリック）
+        </div>
+      </div>
+      <div class="rail__scroll" id="fileList" role="listbox" aria-label="ファイル一覧"></div>
+      <footer class="rail__foot" id="railFoot"></footer>
+    </aside>
+
+    <section class="stage" id="stage"></section>
+  </div>
+</div>
+
+<div class="toast-area" id="toasts" aria-live="polite"></div>
+
+<div class="dropoverlay" id="dropOverlay" hidden>
+  <div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+    ここにドロップして読み込む
+    <small>.xtux / .vtav（変換＋解析）・.csv（解析のみ）</small>
+  </div>
+</div>
+
+<input type="file" id="filePicker" multiple accept=".xtux,.vtav,.csv,.CSV,.XTUX,.VTAV" hidden>
+<input type="file" id="settingsPicker" accept=".json,application/json" hidden>
+
+<dialog id="dlgSettings" aria-labelledby="dlgTitle">
+  <form method="dialog" class="dlg">
+    <div class="dlg__head">
+      <span class="dlg__title" id="dlgTitle">解析パラメータと出力の設定</span>
+      <div class="card__tools">
+        <button class="btn btn--plain btn--sm" value="close" type="submit">閉じる</button>
+      </div>
+    </div>
+    <div class="dlg__body" id="dlgBody"></div>
+    <div class="dlg__foot">
+      <button class="btn btn--plain" type="button" id="btnResetParams">既定値に戻す</button>
+      <span class="muted" style="font-size:var(--fs-1)">変更するとその場で全ファイルを再解析します（変換のやり直しは不要）。</span>
+      <span class="spacer"></span>
+      <button class="btn btn--primary" value="close" type="submit">閉じる</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+/* ============================================================================
+ * 引張試験ファイル 変換 ＋ 解析ツール（単一HTML / 完全オフライン）
+ *   変換部 : trapezium_html_converter_spec.md §1〜§10（Python 版 v5 の移植）
+ *   解析部 : 同 §11〜§17
+ *   UI     : 基本設計.md の 7 原則 ＋ スクロールレス方針
+ * ==========================================================================*/
+
+/* ───────────────────────── 0. 小道具 ───────────────────────── */
+const $  = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
+  { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+));
+
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const cssNum = (name) => parseFloat(cssVar(name)) || 0;
+
+function fmtBytes(n) {
+  if (n == null) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}
+function fmtNum(v, d = 2) {
+  if (v == null || !isFinite(v)) return "—";
+  return v.toLocaleString("ja-JP", { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+const SUP = { "-": "⁻", "+": "", "0": "⁰", "1": "¹", "2": "²", "3": "³",
+              "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
+function fmtExp(v, d = 2) {
+  if (v == null || !isFinite(v)) return "—";
+  if (v === 0) return "0";
+  const [m, e] = v.toExponential(d).split("e");
+  return `${m}×10${String(e).split("").map((c) => SUP[c] ?? c).join("")}`;
+}
+const nowStamp = () => {
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* アイコン（状態は必ず「アイコン＋文字＋色」の三重表現にする） */
+const ICON = {
+  ok:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5.5 5.5L20 6.5"/></svg>',
+  warn:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 1.8 20.5h20.4z"/><path d="M12 9.5v5"/><path d="M12 17.6h.01"/></svg>',
+  err:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  na:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M6 12h12"/></svg>',
+  busy:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9" opacity=".3"/><path d="M12 3a9 9 0 0 1 9 9"/></svg>',
+  wait:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  dl:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4 19h16"/></svg>',
+  zip:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M12 11v5"/><path d="M10 13h4"/></svg>',
+};
+const statusChip = (kind, text) =>
+  `<span class="status status--${kind}">${ICON[kind === "busy" ? "busy" : kind] || ""}${esc(text)}</span>`;
+
+/* ───────────────────────── 1. バイナリ小道具 ───────────────────────── */
+
+/* CRC-32（ZIP 用 ＋ 入力ファイルの照合値表示用） */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+const hex8 = (n) => n.toString(16).toUpperCase().padStart(8, "0");
+
+/** バイト列 needle の最初の出現位置（見つからなければ -1） */
+function findBytes(hay, needle, from = 0) {
+  const n = needle.length, end = hay.length - n;
+  if (n === 0) return from;
+  const first = needle[0];
+  outer: for (let i = from; i <= end; i++) {
+    if (hay[i] !== first) continue;
+    for (let k = 1; k < n; k++) if (hay[i + k] !== needle[k]) continue outer;
+    return i;
+  }
+  return -1;
+}
+/** 非重複で全出現位置（Python の re.finditer 相当） */
+function findAllBytes(hay, needle) {
+  const out = [];
+  let i = 0;
+  for (;;) {
+    const p = findBytes(hay, needle, i);
+    if (p < 0) break;
+    out.push(p);
+    i = p + needle.length;
+  }
+  return out;
+}
+const isDigit = (b) => b >= 0x30 && b <= 0x39;
+
+/** バイト列から `\d{4}/\d{2}/\d{2} \d{1,2}:\d{2}:\d{2}` の最初の位置（無ければ -1） */
+function findDateTimeOffset(d) {
+  const n = d.length;
+  for (let i = 0; i + 17 <= n; i++) {
+    if (!(isDigit(d[i]) && isDigit(d[i + 1]) && isDigit(d[i + 2]) && isDigit(d[i + 3]))) continue;
+    if (d[i + 4] !== 0x2F || !isDigit(d[i + 5]) || !isDigit(d[i + 6])) continue;
+    if (d[i + 7] !== 0x2F || !isDigit(d[i + 8]) || !isDigit(d[i + 9])) continue;
+    if (d[i + 10] !== 0x20) continue;
+    let j = i + 11;
+    if (!isDigit(d[j])) continue;
+    j++;
+    if (isDigit(d[j])) j++;                       // 時は 1〜2 桁
+    if (d[j] !== 0x3A || !isDigit(d[j + 1]) || !isDigit(d[j + 2])) continue;
+    j += 3;
+    if (d[j] !== 0x3A || !isDigit(d[j + 1]) || !isDigit(d[j + 2])) continue;
+    return i;
+  }
+  return -1;
+}
+
+/* ───────────────── 2. TLV 文字列トークン抽出（仕様 §4） ───────────────── */
+
+const DEC_U16LE = new TextDecoder("utf-16le", { fatal: true });
+const DEC_U8    = new TextDecoder("utf-8",    { fatal: true });
+
+/* §4.1 許可文字クラス（完全一致） */
+const CLEAN_RE = /^[　-ヿ一-鿿＀-￯々ー_A-Za-z0-9\/%.^+\-()\[\] :×]+$/;
+
+/**
+ * §4.1 xtux 文字列（UTF-16LE, [0x3E][長さ(byte,偶数)][値]）
+ * 高速化のため、TextDecoder を呼ぶ前にコードユニットを直接検査する
+ * （不正なものはここで落ちるので例外コストが乗らない。判定結果は Python 版と等価）。
+ */
+function walkXtuxStrings(data, marker = 0x3E) {
+  const out = [];
+  const n = data.length;
+  let i = 0;
+  while (i < n - 1) {
+    if (data[i] === marker) {
+      const L = data[i + 1];
+      if (L >= 2 && L <= 254 && (L & 1) === 0 && i + 2 + L <= n) {
+        const start = i + 2;
+        let ok = true;
+        for (let k = 0; k < L; k += 2) {
+          const u = data[start + k] | (data[start + k + 1] << 8);
+          // 制御文字（\n \r \t 以外）/ 非文字 / サロゲートは不採用
+          if (!(u >= 0x20 || u === 0x0A || u === 0x0D || u === 0x09)) { ok = false; break; }
+          if (u === 0xFFFE || u === 0xFFFF || (u >= 0xD800 && u <= 0xDFFF)) { ok = false; break; }
+        }
+        if (ok) {
+          let s = null;
+          try { s = DEC_U16LE.decode(data.subarray(start, start + L)); } catch (_) { s = null; }
+          if (s !== null) {
+            // ★ラベルには表示折返し用の改行/タブが埋まっているので、破棄せず除去する
+            const s2 = s.replace(/[\n\r\t]/g, "").trim();
+            if (s2 && CLEAN_RE.test(s2)) {
+              out.push({ off: i, text: s2 });
+              i += 2 + L;
+              continue;
+            }
+          }
+        }
+      }
+    }
+    i++;
+  }
+  return out;
+}
+
+/**
+ * §4.2 vtav 文字列（UTF-8, [1byte長さ][値]）
+ * 事前に UTF-8 構造を手検査して、TextDecoder 呼び出しを候補だけに絞る。
+ */
+function walkVtavStrings(data) {
+  const out = [];
+  const n = data.length;
+  let i = 0;
+  while (i < n) {
+    const L = data[i];
+    if (L >= 1 && L <= 250 && i + 1 + L <= n) {
+      const st = i + 1, en = i + 1 + L;
+      let p = st, valid = true, hasKey = false;
+      while (p < en) {
+        const b = data[p];
+        let size, cp;
+        if (b < 0x80)             { size = 1; cp = b; }
+        else if ((b & 0xE0) === 0xC0) { size = 2; cp = b & 0x1F; }
+        else if ((b & 0xF0) === 0xE0) { size = 3; cp = b & 0x0F; }
+        else if ((b & 0xF8) === 0xF0) { size = 4; cp = b & 0x07; }
+        else { valid = false; break; }
+        if (p + size > en) { valid = false; break; }
+        for (let k = 1; k < size; k++) {
+          const c = data[p + k];
+          if ((c & 0xC0) !== 0x80) { valid = false; break; }
+          cp = (cp << 6) | (c & 0x3F);
+        }
+        if (!valid) break;
+        if ((size === 2 && cp < 0x80) || (size === 3 && cp < 0x800) || (size === 4 && cp < 0x10000)) { valid = false; break; }
+        if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) { valid = false; break; }
+        if (!(cp >= 0x20 || cp === 0x09)) { valid = false; break; }   // 制御文字（タブ以外）は不採用
+        if ((cp >= 0x3000 && cp <= 0x9FFF) || (cp >= 0xFF00 && cp <= 0xFFEF) ||
+            (cp >= 0x41 && cp <= 0x5A) || (cp >= 0x61 && cp <= 0x7A) || (cp >= 0x30 && cp <= 0x39)) hasKey = true;
+        p += size;
+      }
+      if (valid && hasKey) {
+        let s = null;
+        try { s = DEC_U8.decode(data.subarray(st, en)); } catch (_) { s = null; }
+        if (s !== null) {
+          out.push({ off: i, text: s.trim() });
+          i += 1 + L;
+          continue;
+        }
+      }
+    }
+    i++;
+  }
+  return out;
+}
+
+/* ───────────────── 3. 定数（仕様 §5.0） ───────────────── */
+
+const UNITS = new Set(["N", "N/mm2", "mm", "sec", "%", "MPa/s", "/sec", "mm/min", "GPa", "kN", "MPa"]);
+const NUM_RE = /^-?\d+(\.\d+)?$/;
+const CJK_RE = /[぀-ヿ一-鿿]/;
+
+const COND_KEYS = ["品名", "試験片名", "厚さ", "幅", "直径", "平行部長さ", "つかみ具間距離",
+  "ロードセル容量", "試験機種類", "作成者", "検討者", "承認者",
+  "作成日", "試験日", "試験モード", "試験種類", "速度", "試験片形状",
+  "バッチ数", "サブバッチ数"];
+const COND_KEY_SET = new Set(COND_KEYS);
+
+const NONVALUE = new Set([
+  ...COND_KEYS, ...UNITS,
+  "タイトル", "キーワード", "オペレータ", "コメント", "結果ファイル名", "条件ファイル名",
+  "温度", "湿度", "機体番号", "伸び原点", "名前", "パラメータ", "合否判定", "単位",
+  "変位計1標点距離", "変位計1リミット", "変位計1フルスケール", "変位計2フルスケール",
+  "幅計標点距離", "幅計フルスケール",
+]);
+
+/* §5.3 レポート項目マッピング */
+const REPORT_FIELDS = [
+  ["引張強さ Rm",          "N/mm2",  ["最大点_応力", "最大点_Rm"]],
+  ["耐力 Rp0.2",           "N/mm2",  ["耐力点1_応力", "耐力点1Rp"]],
+  ["伸び",                 "%",      ["破断点_変位(ひずみ)", "破断点_At"]],
+  ["応力増加速度",          "MPa/s",  ["応力増加速度"]],
+  ["ひずみ速度",            "/sec",   ["歪速度"]],
+  ["クロスヘッド変位速度",   "mm/min", ["実績クロスヘッド変異速度", "クロスヘッド変異速度"]],
+  ["弾性率",               "N/mm2",  ["弾性率_Standard"]],
+  ["ヤング率",             "GPa",    ["ヤング率"]],
+  ["最大試験力 Fm",         "N",      ["最大点_試験力", "最大点_Fm"]],
+  ["耐力点試験力",          "N",      ["耐力点1_試験力"]],
+];
+
+const MARKER = Uint8Array.from([0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01]);
+const CHANNELS = [["Time_sec", -8], ["Stroke_mm", -4], ["Force_N", 29], ["Extensometer_mm", 37]];
+const BYTES_試験条件 = Uint8Array.from([0xE8, 0xA9, 0xA6, 0xE9, 0xA8, 0x93, 0xE6, 0x9D, 0xA1, 0xE4, 0xBB, 0xB6]);
+const BYTES_TXVFileVersion = Uint8Array.from([...("TXVFileVersion")].map((c) => c.charCodeAt(0)));
+
+/* ───────────────── 4. フォーマット判別（§3） ───────────────── */
+function detectFormat(data, filename) {
+  const head = data.subarray(0, Math.min(64, data.length));
+  if (findBytes(head, BYTES_TXVFileVersion) >= 0) {
+    return { fmt: "vtav", basis: 'マジック "TXVFileVersion" を先頭 64 バイト内で検出' };
+  }
+  const ext = (filename.match(/\.[^.]*$/) || [""])[0].toLowerCase();
+  if (ext === ".vtav") return { fmt: "vtav", basis: "拡張子 .vtav による判定（マジック未検出）" };
+  return { fmt: "xtux", basis: `拡張子 ${ext || "(なし)"} による判定（マジック未検出）` };
+}
+
+/* ───────────────── 5. 結果サマリー（§5.1 xtux：順序構造） ───────────────── */
+function parseResultsXtux(tokens) {
+  const toks = tokens.map((t) => t.text);
+  const res = [];
+  let i = 0;
+  while (i < toks.length) {
+    if (toks[i] === "名前") {
+      let j = i;
+      while (j < toks.length && toks[j] !== "単位") j++;
+      let k = j + 1;
+      const rows = [];
+      let cur = [];
+      while (k < toks.length) {
+        const t = toks[k];
+        if (NUM_RE.test(t) || t === "名前") break;
+        cur.push(t);
+        if (UNITS.has(t)) {
+          rows.push([cur[0], t, cur.slice(1, -1).join(" ").trim()]);
+          cur = [];
+        }
+        k++;
+      }
+      const vals = [];
+      while (k < toks.length && NUM_RE.test(toks[k])) { vals.push(toks[k]); k++; }
+      rows.forEach((r, idx) => res.push({
+        label: r[0], unit: r[1], value: idx < vals.length ? vals[idx] : "", param: r[2],
+      }));
+      i = k;
+      continue;
+    }
+    i++;
+  }
+  for (const r of res) if (r.label === "" && r.unit === "mm/min") r.label = "実績クロスヘッド変異速度";
+  return res;
+}
+
+/* ───────────────── 6. 結果サマリー（§5.2 vtav：バイトアンカー） ───────────────── */
+function isResultLabel(s) {
+  if (!CJK_RE.test(s)) return false;
+  if (s === "全エリアで計算" || s.startsWith("計算式") || s.startsWith("速度センサー")) return false;
+  if (s.includes("Arial") || s.startsWith("[") || s.startsWith("<<") || s.includes("->") ||
+      s.startsWith("(") || s.includes("]") || s.includes("@")) return false;
+  return s.includes("_") || s.includes("×") || s.includes("点") || s.endsWith("率") ||
+         s.includes("速度") || s.includes("ヤング");
+}
+function nearestUnit(unitsSorted, voff) {
+  let unit = "";
+  for (const u of unitsSorted) {
+    if (u.off >= voff) break;
+    if (voff - u.off < 200) unit = u.text;
+  }
+  return unit;
+}
+/**
+ * 値アンカー ([\x01-\x0f])(-?[0-9][0-9.\-]{0,14})\x00[\x01\x02]\x00\x00\x00 を
+ * バイト列上で直接走査する（group1 の長さ整合チェック込み ＝ Python 版と等価）。
+ */
+function scanVtavAnchors(d) {
+  const hits = [];
+  const n = d.length;
+  for (let i = 0; i + 6 < n; i++) {
+    const L = d[i];
+    if (L < 0x01 || L > 0x0F) continue;
+    const end = i + 1 + L;
+    if (end + 5 > n) continue;
+    // 末尾 \x00 [\x01|\x02] \x00 \x00 \x00
+    if (d[end] !== 0x00 || (d[end + 1] !== 0x01 && d[end + 1] !== 0x02) ||
+        d[end + 2] !== 0x00 || d[end + 3] !== 0x00 || d[end + 4] !== 0x00) continue;
+    // 値本体 -?[0-9][0-9.\-]{0,14}
+    let p = i + 1;
+    if (d[p] === 0x2D) p++;                                  // 先頭の '-'
+    if (p >= end || !isDigit(d[p])) continue;                // 続く 1 文字は数字
+    p++;
+    let ok = true;
+    for (; p < end; p++) {
+      const b = d[p];
+      if (!(isDigit(b) || b === 0x2E || b === 0x2D)) { ok = false; break; }
+    }
+    if (!ok) continue;
+    let s = "";
+    for (let q = i + 1; q < end; q++) s += String.fromCharCode(d[q]);
+    hits.push({ off: i, val: s, na: false });
+  }
+  // 未算出 (N/A) アンカー \x03 "-.-" \x00 [\x01\x02] \x00\x00\x00
+  for (let i = 0; i + 8 < n; i++) {
+    if (d[i] !== 0x03 || d[i + 1] !== 0x2D || d[i + 2] !== 0x2E || d[i + 3] !== 0x2D) continue;
+    if (d[i + 4] !== 0x00 || (d[i + 5] !== 0x01 && d[i + 5] !== 0x02) ||
+        d[i + 6] !== 0x00 || d[i + 7] !== 0x00 || d[i + 8] !== 0x00) continue;
+    hits.push({ off: i, val: "N/A", na: true });
+  }
+  hits.sort((a, b) => a.off - b.off);
+  return hits;
+}
+function parseResultsVtav(data, tokens) {
+  let auditStart = findBytes(data, BYTES_試験条件);
+  if (auditStart < 0) auditStart = data.length;
+  const dt = findDateTimeOffset(data);
+  const resultsStart = dt >= 0 ? dt : 0;
+
+  const labels = tokens.filter((t) => isResultLabel(t.text));
+  const units  = tokens.filter((t) => UNITS.has(t.text));
+
+  const res = [];
+  const seen = new Set();
+  let li = 0;                                   // labels は offset 昇順なのでポインタで追える
+  for (const h of scanVtavAnchors(data)) {
+    if (!(resultsStart <= h.off && h.off < auditStart)) continue;
+    if (h.val === "0") continue;
+    // 値アンカーより前で最も近いラベル（200 バイト以内）を採る。使い回しはしない。
+    while (li < labels.length && labels[li].off < h.off) li++;
+    const pick = li > 0 && h.off - labels[li - 1].off < 200 ? labels[li - 1] : null;
+    if (!pick) continue;
+    if (seen.has(pick.off)) continue;
+    seen.add(pick.off);
+    res.push({ label: pick.text, unit: nearestUnit(units, h.off), value: h.val, param: "" });
+  }
+  return res;
+}
+
+/* ───────────────── 7. 試験条件（§5.4） ───────────────── */
+const DATE_RE = /^\d{4}\/\d{2}\/\d{2}( \d{1,2}:\d{2}:\d{2})?$/;
+const DIM_RE = /^-?\d+\.\d+$/;
+const LOADCELL_RE = /^\d+\s?kN$/;
+const LOT_RE = /^[A-Z][0-9A-Z]{6,}$/;
+const DIM_KEYS = new Set(["厚さ", "幅", "直径", "平行部長さ", "つかみ具間距離"]);
+
+function validateCond(key, cand) {
+  if (DIM_KEYS.has(key)) return DIM_RE.test(cand) ? cand : null;
+  if (key === "作成日" || key === "試験日") return DATE_RE.test(cand) ? cand : null;
+  if (key === "ロードセル容量") return LOADCELL_RE.test(cand) ? cand : null;
+  if (key === "バッチ数" || key === "サブバッチ数") return /^\d+$/.test(cand) ? cand : null;
+  return NONVALUE.has(cand) ? null : cand;
+}
+function extractConditions(tokens) {
+  const vals = tokens.map((t) => t.text);
+  const cond = {};
+  for (let idx = 0; idx < vals.length; idx++) {
+    const s = vals[idx];
+    if (!COND_KEY_SET.has(s) || s in cond) continue;
+    for (let j = idx + 1; j < Math.min(idx + 6, vals.length); j++) {
+      const cand = vals[j];
+      if (!cand || cand === s) continue;
+      if (COND_KEY_SET.has(cand)) break;
+      const ok = validateCond(s, cand);
+      if (ok !== null) { cond[s] = ok; break; }
+    }
+  }
+  for (const t of tokens) {
+    if (LOT_RE.test(t.text)) { cond["ロット/製造番号"] = t.text; break; }
+  }
+  return cond;
+}
+/** §5.4.2 xtux の寸法補完（UTF-8 TLV 側の寸法セクションから拾う） */
+function supplementXtuxDims(cond, u8tokens) {
+  const vals = u8tokens.map((t) => t.text);
+  const stop = new Set(["試験片名", "名前", "パラメータ", "合否判定", "単位"]);
+  const filled = [];
+  for (let idx = 0; idx < vals.length; idx++) {
+    const s = vals[idx];
+    if (!DIM_KEYS.has(s) || s in cond) continue;
+    for (let j = idx + 1; j < Math.min(idx + 6, vals.length); j++) {
+      const c = vals[j];
+      if (DIM_KEYS.has(c) || stop.has(c)) break;
+      if (DIM_RE.test(c)) { cond[s] = c; filled.push(s); break; }   // 小数のみ（フラグ "1" を除外）
+    }
+  }
+  return filled;
+}
+
+/* ───────────────── 8. 生波形（§5.5） ───────────────── */
+function extractWaveform(data) {
+  const pos = findAllBytes(data, MARKER);
+  if (pos.length < 20) {
+    return { ok: false, reason: `波形マーカー（01 00 00 00 00 01 01）の検出数が ${pos.length} 個（20 個未満）`, points: 0 };
+  }
+  const counts = new Map();
+  for (let i = 0; i < pos.length - 1; i++) {
+    const d = pos[i + 1] - pos[i];
+    if (d > 0 && d < 4096) counts.set(d, (counts.get(d) || 0) + 1);
+  }
+  if (!counts.size) return { ok: false, reason: "マーカー間隔が全て 4096 バイト以上で、レコード周期を決められない", points: 0 };
+  let stride = 0, best = -1;
+  for (const [d, c] of counts) if (c > best) { best = c; stride = d; }   // 同数なら先に現れた方（Counter 相当）
+
+  const good = [];
+  for (let i = 0; i < pos.length - 1; i++) if (pos[i + 1] - pos[i] === stride) good.push(pos[i]);
+  if (good.length && pos[pos.length - 1] - good[good.length - 1] === stride) good.push(pos[pos.length - 1]);
+  if (good.length < 20) {
+    return { ok: false, reason: `レコード周期 ${stride} バイトに一致する点が ${good.length} 個（20 個未満）`, points: 0, stride };
+  }
+
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const columns = {};
+  const dropped = [];
+  for (const [name, off] of CHANNELS) {
+    const arr = new Float64Array(good.length);
+    let ok = true;
+    for (let i = 0; i < good.length; i++) {
+      const p = good[i] + off;
+      if (p < 0 || p + 4 > data.length) { ok = false; break; }
+      const v = dv.getFloat32(p, true);
+      if (Number.isNaN(v)) { ok = false; break; }               // NaN を含む列は採用しない
+      arr[i] = v;
+    }
+    if (ok) columns[name] = arr; else dropped.push(name);
+  }
+  return { ok: Object.keys(columns).length > 0, stride, points: good.length, columns, dropped,
+           reason: Object.keys(columns).length ? "" : "全チャネルが範囲外または NaN を含み、採用できる列がない" };
+}
+
+/* ───────────────── 9. 変更履歴（§5.6, vtav のみ） ───────────────── */
+function parseAudit(tokens) {
+  const vals = tokens.map((t) => t.text);
+  const dtRe = /^\d{4}\/\d{2}\/\d{2} \d{1,2}:\d{2}:\d{2}$/;
+  const rows = [];
+  for (let i = 0; i < vals.length; i++) {
+    const s = vals[i];
+    if (!(s.includes("試験条件") && s.startsWith("<<"))) continue;
+    let change = i + 1 < vals.length ? vals[i + 1] : "";
+    let when = "", user = "";
+    for (let j = i + 1; j < Math.min(i + 4, vals.length); j++) {
+      if (dtRe.test(vals[j])) {
+        when = vals[j];
+        user = j + 1 < vals.length ? vals[j + 1] : "";
+        if (j === i + 1) change = "";
+        break;
+      }
+    }
+    rows.push({ item: s, change, datetime: when, user });
+  }
+  return rows;
+}
+
+/* ───────────────── 10. レポート項目（§5.3） ───────────────── */
+function buildReport(results) {
+  const byLabel = new Map();
+  for (const r of results) if (!byLabel.has(r.label)) byLabel.set(r.label, r);   // 先勝ち
+  return REPORT_FIELDS.map(([item, unit, cands]) => {
+    for (const c of cands) {
+      if (byLabel.has(c)) return { item, value: byLabel.get(c).value, unit, source_label: c };
+    }
+    return { item, value: "", unit, source_label: "" };
+  });
+}
+
+/* ───────────────── 11. CSV 出力（§6） ───────────────── */
+const BOM = Uint8Array.from([0xEF, 0xBB, 0xBF]);
+function csvField(v) {
+  const s = v == null ? "" : String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function toCsv(rows) {
+  return rows.map((r) => r.map(csvField).join(",")).join("\r\n") + "\r\n";
+}
+/** UTF-8 BOM 付きバイト列にする（Excel で文字化けしないこと） */
+function csvBytes(text) {
+  const body = new TextEncoder().encode(text);
+  const out = new Uint8Array(BOM.length + body.length);
+  out.set(BOM, 0);
+  out.set(body, BOM.length);
+  return out;
+}
+/**
+ * 波形の小数 6 桁丸め。Python の round(x, 6) と同じ「偶数丸め」にそろえる
+ * （float32 由来の値では x*1e6 が誤差なく求まるため、これで Python 版と完全一致する）。
+ */
+function round6HalfEven(v) {
+  if (!isFinite(v)) return v;
+  const s = v * 1e6;
+  const f = Math.floor(s);
+  const d = s - f;
+  const n = d > 0.5 ? f + 1 : d < 0.5 ? f : (f % 2 === 0 ? f : f + 1);
+  return n / 1e6;
+}
+/** Python の str(float) と同じ見た目にする（整数値でも小数点を残す） */
+function pyFloat(v) {
+  const r = round6HalfEven(v);
+  if (Object.is(r, -0)) return "-0.0";
+  return Number.isInteger(r) ? r.toFixed(1) : String(r);
+}
+function downloadBytes(bytes, filename, mime) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ───────────────── 12. Zip（§7.2 / store・内蔵実装） ───────────────── */
+function dosStamp(d) {
+  return {
+    time: ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((d.getSeconds() / 2) & 31),
+    date: (((d.getFullYear() - 1980) & 127) << 9) | (((d.getMonth() + 1) & 15) << 5) | (d.getDate() & 31),
+  };
+}
+function zipStore(files) {
+  const enc = new TextEncoder();
+  const { time, date } = dosStamp(new Date());
+  const parts = [];
+  const central = [];
+  let offset = 0;
+
+  for (const f of files) {
+    const name = enc.encode(f.path);
+    const crc = crc32(f.data);
+    const lh = new Uint8Array(30 + name.length);
+    const dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034B50, true);
+    dv.setUint16(4, 20, true);         // version needed
+    dv.setUint16(6, 0x0800, true);     // 汎用フラグ bit11 = ファイル名は UTF-8
+    dv.setUint16(8, 0, true);          // method = 0 (store)
+    dv.setUint16(10, time, true);
+    dv.setUint16(12, date, true);
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, f.data.length, true);
+    dv.setUint32(22, f.data.length, true);
+    dv.setUint16(26, name.length, true);
+    dv.setUint16(28, 0, true);
+    lh.set(name, 30);
+    parts.push(lh, f.data);
+    central.push({ name, crc, size: f.data.length, offset });
+    offset += lh.length + f.data.length;
+  }
+
+  const cdParts = [];
+  let cdSize = 0;
+  for (const c of central) {
+    const ch = new Uint8Array(46 + c.name.length);
+    const dv = new DataView(ch.buffer);
+    dv.setUint32(0, 0x02014B50, true);
+    dv.setUint16(4, 20, true);         // version made by
+    dv.setUint16(6, 20, true);         // version needed
+    dv.setUint16(8, 0x0800, true);
+    dv.setUint16(10, 0, true);
+    dv.setUint16(12, time, true);
+    dv.setUint16(14, date, true);
+    dv.setUint32(16, c.crc, true);
+    dv.setUint32(20, c.size, true);
+    dv.setUint32(24, c.size, true);
+    dv.setUint16(28, c.name.length, true);
+    dv.setUint16(30, 0, true);         // extra
+    dv.setUint16(32, 0, true);         // comment
+    dv.setUint16(34, 0, true);         // disk
+    dv.setUint16(36, 0, true);         // internal attrs
+    dv.setUint32(38, 0, true);         // external attrs
+    dv.setUint32(42, c.offset, true);
+    ch.set(c.name, 46);
+    cdParts.push(ch);
+    cdSize += ch.length;
+  }
+  const eocd = new Uint8Array(22);
+  const edv = new DataView(eocd.buffer);
+  edv.setUint32(0, 0x06054B50, true);
+  edv.setUint16(8, central.length, true);
+  edv.setUint16(10, central.length, true);
+  edv.setUint32(12, cdSize, true);
+  edv.setUint32(16, offset, true);
+
+  const total = offset + cdSize + eocd.length;
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const b of parts)   { out.set(b, p); p += b.length; }
+  for (const b of cdParts) { out.set(b, p); p += b.length; }
+  out.set(eocd, p);
+  return out;
+}
+/* ───────────────── 13. 解析パラメータ既定値（§15） ───────────────── */
+const DEFAULT_PARAMS = {
+  gaugeLength: 50,            // mm   ひずみ算出のゲージ長
+  velocityThreshold: 5.0,     // mm/min 速度法耐力の初期閾値
+  linearStart_pct: 5,         // %    耐力探索の下限荷重（maxForce 比）
+  linearityLo: 0.2,           // −    直線域フィットの応力バンド下限（耐力応力比）
+  linearityHi: 0.5,           // −    同上限
+  linearityR2Ok: 0.995,       // −    直線性の合格 R²
+  linearityR2Warn: 0.990,     // −    直線性の要確認 R²
+  fracture_k1: 5,             // −    式① 急落倍率
+  fracture_k2: 0.02,          // −    式② 低荷重比
+  shimadzuPctOfMaxForce: 30,  // %    島津法の 1 秒あたり荷重低下率
+  smoothingWindow: 5,         // 点   速度の移動平均窓
+  smoothing: true,
+  rampCheck: true,            // 応力増加速度の許容範囲チェックを行うか
+  rampMin: 2,                 // MPa/s
+  rampMax: 20,                // MPa/s
+  auditOut: false,            // 変更履歴 (audit) も出力（vtav のみ）
+};
+const PARAM_META = [
+  { key: "gaugeLength", label: "ゲージ長", unit: "mm", step: "0.1", min: 0.1, group: "ひずみ・速度" },
+  { key: "smoothingWindow", label: "速度の移動平均窓", unit: "点", step: "1", min: 1, group: "ひずみ・速度" },
+  { key: "velocityThreshold", label: "速度法の初期閾値", unit: "mm/min", step: "0.1", min: 0, group: "耐力（速度法）" },
+  { key: "linearStart_pct", label: "耐力探索の下限荷重", unit: "% of Fmax", step: "0.5", min: 0, group: "耐力（速度法）" },
+  { key: "linearityLo", label: "直線域バンド下限", unit: "× 耐力応力", step: "0.05", min: 0, group: "直線域・0.2%耐力" },
+  { key: "linearityHi", label: "直線域バンド上限", unit: "× 耐力応力", step: "0.05", min: 0, group: "直線域・0.2%耐力" },
+  { key: "linearityR2Ok", label: "直線性 合格 R²", unit: "−", step: "0.001", min: 0, max: 1, group: "直線域・0.2%耐力" },
+  { key: "linearityR2Warn", label: "直線性 要確認 R²", unit: "−", step: "0.001", min: 0, max: 1, group: "直線域・0.2%耐力" },
+  { key: "fracture_k1", label: "式① 急落倍率 k1", unit: "−", step: "0.5", min: 0, group: "破断・伸び" },
+  { key: "fracture_k2", label: "式② 低荷重比 k2", unit: "× Fmax", step: "0.005", min: 0, group: "破断・伸び" },
+  { key: "shimadzuPctOfMaxForce", label: "島津法 1 秒低下率", unit: "% of Fmax", step: "1", min: 0, group: "破断・伸び" },
+  { key: "rampMin", label: "応力増加速度 下限", unit: "MPa/s", step: "0.5", min: 0, group: "判定" },
+  { key: "rampMax", label: "応力増加速度 上限", unit: "MPa/s", step: "0.5", min: 0, group: "判定" },
+];
+
+/* ───────────────── 14. 数値ユーティリティ ───────────────── */
+const fin = (v) => typeof v === "number" && isFinite(v);
+function median(arr) {
+  const a = arr.filter(fin).sort((x, y) => x - y);
+  if (!a.length) return NaN;
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+/** 最小二乗フィット（idxs で指定した点のみ） */
+function lsqFit(xs, ys, idxs) {
+  let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0;
+  for (const i of idxs) {
+    const x = xs[i], y = ys[i];
+    if (!fin(x) || !fin(y)) continue;
+    n++; sx += x; sy += y; sxx += x * x; sxy += x * y; syy += y * y;
+  }
+  if (n < 2) return null;
+  const d = n * sxx - sx * sx;
+  if (Math.abs(d) < 1e-12) return null;
+  const slope = (n * sxy - sx * sy) / d;
+  const intercept = (sy - slope * sx) / n;
+  const num = n * sxy - sx * sy;
+  const den = Math.sqrt((n * sxx - sx * sx) * (n * syy - sy * sy));
+  const r2 = den > 0 ? (num / den) ** 2 : NaN;
+  return { slope, intercept, r2, n };
+}
+function movingAverage(src, win) {
+  const n = src.length;
+  if (!(win > 1) || n === 0) return src;
+  const half = Math.floor(win / 2);
+  const out = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0, c = 0;
+    for (let k = i - half; k <= i + half; k++) {
+      if (k < 0 || k >= n) continue;
+      const v = src[k];
+      if (!fin(v)) continue;
+      s += v; c++;
+    }
+    out[i] = c ? s / c : NaN;
+  }
+  return out;
+}
+
+/* ───────────────── 15. 解析エンジン（§12〜§14） ───────────────── */
+/**
+ * @param inp {time,force,stress,displacement,stroke: Float64Array|null, area, areaBasis, stressSource}
+ * @param P   解析パラメータ
+ */
+function analyze(inp, P) {
+  const force = inp.force;
+  const n = force ? force.length : 0;
+  const A = {
+    ok: false, n, blocked: [], series: {}, basis: {},
+  };
+  if (!force || n < 5) {
+    A.reason = "試験力の点数が 5 点未満のため、解析できません";
+    return A;
+  }
+
+  /* --- 12.1 ひずみ ε [%] --- */
+  let strain = null;
+  if (inp.displacement) {
+    strain = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const d = inp.displacement[i];
+      strain[i] = fin(d) ? (d / P.gaugeLength) * 100 : NaN;
+    }
+    A.basis.strain = `ε = 変位計 ÷ ゲージ長 ${fmtNum(P.gaugeLength, 1)} mm × 100`;
+  } else {
+    A.blocked.push({ what: "ひずみ ε", why: "変位（伸び計）データが無いため算出できません" });
+  }
+
+  /* --- 応力 σ（§11.2：入力経路で取得方法が変わる） --- */
+  let stress = null;
+  if (inp.stress) {
+    stress = inp.stress;
+    A.basis.stress = inp.stressSource || "入力の応力列をそのまま使用（換算なし）";
+  } else if (fin(inp.area) && inp.area > 0) {
+    stress = new Float64Array(n);
+    for (let i = 0; i < n; i++) stress[i] = fin(force[i]) ? force[i] / inp.area : NaN;
+    A.basis.stress = `σ = 試験力 ÷ 断面積 A（A = ${fmtNum(inp.area, 3)} mm²）／${inp.areaBasis || "断面積は手入力"}`;
+  } else {
+    A.blocked.push({ what: "応力 σ", why: "断面積 A が未確定です（試験条件に寸法が無いため、解析タブで A または 厚さ・幅・直径 を入力してください）" });
+  }
+
+  /* --- 12.2 速度 v [mm/min] --- */
+  let velocity = null;
+  if (inp.time && inp.stroke) {
+    const raw = new Float64Array(n);
+    raw.fill(NaN);
+    for (let i = 1; i < n; i++) {
+      const dt = inp.time[i] - inp.time[i - 1];
+      if (!(dt > 0) || !fin(inp.stroke[i]) || !fin(inp.stroke[i - 1])) continue;
+      raw[i] = ((inp.stroke[i] - inp.stroke[i - 1]) / dt) * 60;
+    }
+    if (n > 1) raw[0] = raw[1];
+    velocity = P.smoothing ? movingAverage(raw, P.smoothingWindow) : raw;
+    A.basis.velocity = `v = Δストローク ÷ Δ時間 × 60` +
+      (P.smoothing ? `／移動平均 ${P.smoothingWindow} 点で平滑化` : "／平滑化なし");
+  } else {
+    A.blocked.push({
+      what: "速度 v",
+      why: `${!inp.time ? "時間" : "ストローク"}データが無いため算出できません`,
+    });
+  }
+
+  A.series = { time: inp.time, force, stroke: inp.stroke, displacement: inp.displacement, strain, stress, velocity };
+
+  /* --- 14.1 引張強さ Rm（最大試験力に対応する応力） --- */
+  let maxIndex = 0, maxForce = -Infinity;
+  for (let i = 0; i < n; i++) if (fin(force[i]) && force[i] > maxForce) { maxForce = force[i]; maxIndex = i; }
+  A.max = { index: maxIndex, force: maxForce };
+  if (stress) {
+    A.rm = {
+      value: stress[maxIndex], index: maxIndex, force: maxForce,
+      strain: strain ? strain[maxIndex] : NaN,
+      basis: `最大試験力 ${fmtNum(maxForce, 1)} N（第 ${maxIndex + 1} 点）に対応する応力`,
+    };
+  } else {
+    A.rm = null;
+  }
+
+  /* --- 14.2 耐力①: 速度法（降伏点検出） --- */
+  if (velocity && fin(maxForce)) {
+    const band = [];
+    for (let i = 0; i < n; i++) {
+      if (!fin(force[i]) || !fin(velocity[i])) continue;
+      if (force[i] >= 0.05 * maxForce && force[i] <= 0.30 * maxForce) band.push(velocity[i]);
+    }
+    const vBase = median(band);
+    let thr = P.velocityThreshold, thrWhy = `設定値 ${fmtNum(P.velocityThreshold, 1)} mm/min`;
+    if (vBase >= 2.7 && vBase <= 3.3) { thr = 3.3; thrWhy = `弾性域の基準速度 ${fmtNum(vBase, 2)} mm/min → 試験速度 3 mm/min と判定`; }
+    else if (vBase >= 5.4 && vBase <= 6.6) { thr = 6.6; thrWhy = `弾性域の基準速度 ${fmtNum(vBase, 2)} mm/min → 試験速度 6 mm/min と判定`; }
+    const forceFloor = maxForce * (P.linearStart_pct / 100);
+    let idx = -1;
+    for (let i = 0; i < n; i++) {
+      if (!fin(force[i]) || !fin(velocity[i])) continue;
+      if (force[i] >= forceFloor && velocity[i] > thr) { idx = i; break; }
+    }
+    if (idx >= 0) {
+      A.yieldV = {
+        index: idx, force: force[idx], velocity: velocity[idx], threshold: thr, vBase,
+        strain: strain ? strain[idx] : NaN,
+        stress: stress ? stress[idx] : NaN,
+        basis: `速度が閾値 ${fmtNum(thr, 2)} mm/min を最初に超えた第 ${idx + 1} 点（${thrWhy}／下限荷重 ${fmtNum(forceFloor, 0)} N ＝ Fmax の ${fmtNum(P.linearStart_pct, 0)}%）`,
+      };
+    } else {
+      A.yieldV = null;
+      A.blocked.push({ what: "耐力（速度法）", why: `速度が閾値 ${fmtNum(thr, 2)} mm/min を超える点が見つかりません（基準速度 ${fin(vBase) ? fmtNum(vBase, 2) + " mm/min" : "算出不可"}）` });
+    }
+  } else {
+    A.yieldV = null;
+    A.blocked.push({ what: "耐力（速度法）", why: "速度（時間・ストローク）が無いため検出できません" });
+  }
+
+  /* --- 14.3 前提: 弾性直線域と勾配 slope --- */
+  A.linear = null;
+  if (stress && strain) {
+    let base, baseWhy;
+    if (A.yieldV && fin(A.yieldV.stress)) {
+      base = A.yieldV.stress;
+      baseWhy = `耐力（速度法）の応力 ${fmtNum(base, 1)} N/mm² を基準`;
+    } else if (A.rm && fin(A.rm.value)) {
+      base = A.rm.value * 0.8;
+      baseWhy = `耐力（速度法）が無いため 引張強さ Rm × 0.8 = ${fmtNum(base, 1)} N/mm² を代替基準に使用`;
+    } else {
+      base = NaN; baseWhy = "";
+    }
+    if (fin(base)) {
+      const lo = base * P.linearityLo, hi = base * P.linearityHi;
+      const cand = [];
+      const limit = A.yieldV ? A.yieldV.index : maxIndex;
+      for (let i = 0; i <= limit && i < n; i++) {
+        if (!fin(strain[i]) || !fin(stress[i])) continue;
+        if (stress[i] >= lo && stress[i] <= hi) cand.push(i);
+      }
+      if (cand.length >= 5) {
+        // 降伏開始側（高応力側）の非直線点を、R² が合格域に入るまで切り落として cutoff を決める
+        let use = cand.slice();
+        let fit = lsqFit(strain, stress, use);
+        const minKeep = Math.max(5, Math.floor(cand.length * 0.5));
+        let trimmed = 0;
+        while (fit && fit.r2 < P.linearityR2Ok && use.length > minKeep) {
+          use = use.slice(0, use.length - 1);
+          trimmed++;
+          fit = lsqFit(strain, stress, use);
+        }
+        if (fit) {
+          const s0 = use[0], s1 = use[use.length - 1];
+          A.linear = {
+            startIdx: s0, cutoffIdx: s1, slope: fit.slope, intercept: fit.intercept, r2: fit.r2,
+            nPoints: fit.n, trimmed,
+            strainFrom: strain[s0], strainTo: strain[s1],
+            basis: `${baseWhy}／応力バンド ${fmtNum(lo, 1)}〜${fmtNum(hi, 1)} N/mm²（× ${P.linearityLo}〜${P.linearityHi}）内の ${fit.n} 点で最小二乗フィット` +
+                   (trimmed ? `／非直線の ${trimmed} 点を高応力側から除外` : ""),
+            fallback: !(A.yieldV && fin(A.yieldV.stress)),
+          };
+          A.youngs = { nmm2: fit.slope * 100, gpa: (fit.slope * 100) / 1000 };
+        }
+      } else {
+        A.blocked.push({ what: "弾性勾配・0.2%耐力", why: `直線域バンド内の点が ${cand.length} 点しかありません（5 点以上必要）` });
+      }
+    } else {
+      A.blocked.push({ what: "弾性勾配・0.2%耐力", why: "基準となる耐力応力・引張強さのいずれも算出できません" });
+    }
+  } else if (!A.blocked.some((b) => b.what === "応力 σ" || b.what === "ひずみ ε")) {
+    A.blocked.push({ what: "弾性勾配・0.2%耐力", why: "ひずみ・応力が揃っていません" });
+  }
+
+  /* --- 14.3 0.2% オフセット耐力 --- */
+  A.offset02 = null;
+  if (A.linear && strain && stress) {
+    const { slope } = A.linear;
+    const line = (e) => slope * (e - 0.2);
+    let found = null, bestAbs = Infinity, bestIdx = -1;
+    let prevIdx = -1;
+    for (let i = 0; i <= maxIndex; i++) {
+      if (!fin(strain[i]) || !fin(stress[i])) continue;
+      if (strain[i] <= 0.2) { prevIdx = i; continue; }
+      const diff = stress[i] - line(strain[i]);
+      if (Math.abs(diff) < bestAbs) { bestAbs = Math.abs(diff); bestIdx = i; }
+      if (prevIdx >= 0) {
+        const dPrev = stress[prevIdx] - line(strain[prevIdx]);
+        if (dPrev > 0 && diff <= 0) {                      // 正 → 0 以下 に変わった点が交点
+          const pick = Math.abs(dPrev) <= Math.abs(diff) ? prevIdx : i;
+          found = { index: pick, strain: strain[pick], stress: stress[pick], approx: false };
+          break;
+        }
+      }
+      prevIdx = i;
+    }
+    if (!found && bestIdx >= 0) {
+      found = { index: bestIdx, strain: strain[bestIdx], stress: stress[bestIdx], approx: true };
+    }
+    if (found) {
+      found.basis = `オフセット線 σ = ${fmtNum(A.linear.slope, 1)} × (ε − 0.2) との` +
+        (found.approx ? "差が最小の点（交差が見つからないため近似採用）" : `交点（第 ${found.index + 1} 点）`);
+      A.offset02 = found;
+    }
+  }
+
+  /* --- 14.4 伸び（破断ひずみ）方式A: 式①→② --- */
+  A.fractureA = null;
+  {
+    const k1 = P.fracture_k1, k2 = P.fracture_k2;
+    let dropStart = -1;
+    for (let i = maxIndex + 1; i < n - 1; i++) {
+      const d1 = Math.abs(force[i] - force[i - 1]);
+      const d2 = Math.abs(force[i + 1] - force[i]);
+      if (d1 > maxForce * 0.0005 && d2 > k1 * d1) { dropStart = i; break; }
+    }
+    const searchStart = dropStart >= 0 ? dropStart : maxIndex;
+    let fr = -1;
+    for (let i = searchStart; i < n - 1; i++) {
+      if (force[i + 1] < k2 * maxForce) { fr = i; break; }
+    }
+    if (fr >= 0) {
+      A.fractureA = {
+        index: fr, strain: strain ? strain[fr] : NaN, stress: stress ? stress[fr] : NaN,
+        dropStart,
+        basis: `式①（急落開始）${dropStart >= 0 ? `第 ${dropStart + 1} 点` : "検出なし → 最大点から探索"}` +
+               `／式②（試験力が Fmax の ${fmtNum(k2 * 100, 1)}% 未満）第 ${fr + 1} 点`,
+      };
+    } else {
+      A.blocked.push({ what: "伸び（式①→②法）", why: `試験力が Fmax の ${fmtNum(k2 * 100, 1)}% 未満に下がる点がありません（破断まで記録されていない可能性）` });
+    }
+  }
+
+  /* --- 14.4 方式B: 島津法（1 秒間の荷重低下率） --- */
+  A.fractureB = null;
+  if (inp.time) {
+    const dts = [];
+    for (let i = 1; i < n; i++) {
+      const d = inp.time[i] - inp.time[i - 1];
+      if (d > 0) dts.push(d);
+    }
+    let dt = median(dts);
+    if (!fin(dt) || dt <= 0) dt = 0.05;
+    const steps = Math.max(1, Math.round(1 / dt));
+    const threshold = maxForce * (P.shimadzuPctOfMaxForce / 100);
+    let fr = -1;
+    for (let i = maxIndex; i + steps < n; i++) {
+      if (force[i] - force[i + steps] >= threshold) { fr = i; break; }
+    }
+    if (fr >= 0) {
+      A.fractureB = {
+        index: fr, strain: strain ? strain[fr] : NaN, stress: stress ? stress[fr] : NaN,
+        steps, dt, threshold,
+        basis: `サンプリング周期 ${fmtNum(dt, 4)} s（${steps} 点＝1 秒）で試験力が ${fmtNum(threshold, 0)} N（Fmax の ${fmtNum(P.shimadzuPctOfMaxForce, 0)}%）以上低下した第 ${fr + 1} 点`,
+      };
+    } else {
+      A.blocked.push({ what: "伸び（島津法）", why: `1 秒間に Fmax の ${fmtNum(P.shimadzuPctOfMaxForce, 0)}% 以上低下する区間がありません` });
+    }
+  } else {
+    A.blocked.push({ what: "伸び（島津法）", why: "時間データが無いため 1 秒間の低下率を評価できません" });
+  }
+
+  /* 伸び = 採用した破断点のひずみ（方式A 優先） */
+  A.elongation = null;
+  const frMain = A.fractureA || A.fractureB;
+  if (frMain && strain && fin(frMain.strain)) {
+    A.elongation = {
+      value: frMain.strain,
+      method: A.fractureA ? "式①→②法" : "島津法",
+      index: frMain.index, basis: frMain.basis,
+    };
+  } else if (frMain && !strain) {
+    A.blocked.push({ what: "伸び", why: "破断点は検出できましたが、ひずみが無いため伸びを算出できません" });
+  }
+
+  /* --- 14.5 応力増加速度 [MPa/s] --- */
+  A.rampRate = null;
+  if (A.linear && inp.time && stress) {
+    const idxs = [];
+    for (let i = A.linear.startIdx; i <= A.linear.cutoffIdx; i++) idxs.push(i);
+    const fit = lsqFit(inp.time, stress, idxs);
+    if (fit) {
+      A.rampRate = {
+        value: fit.slope, r2: fit.r2, nPoints: fit.n,
+        basis: `直線域（第 ${A.linear.startIdx + 1}〜${A.linear.cutoffIdx + 1} 点・${fit.n} 点）の 時間 vs 応力 最小二乗傾き`,
+      };
+    }
+  } else if (!inp.time) {
+    A.blocked.push({ what: "応力増加速度", why: "時間データが無いため算出できません" });
+  }
+
+  /* --- 14.6 参考: ひずみ速度①（弾性）②（塑性） --- */
+  A.strainRate1 = null;
+  A.strainRate2 = null;
+  if (inp.time && strain) {
+    if (A.linear) {
+      const idxs = [];
+      for (let i = A.linear.startIdx; i <= A.linear.cutoffIdx; i++) idxs.push(i);
+      const f = lsqFit(inp.time, strain, idxs);
+      if (f) A.strainRate1 = { value: f.slope / 100, nPoints: f.n, basis: `直線域 ${f.n} 点の 時間 vs ひずみ(%) 傾き ÷ 100` };
+    }
+    const yi = A.yieldV ? A.yieldV.index : null;
+    const fi = frMain ? frMain.index : null;
+    if (yi != null && fi != null && fi > yi + 2) {
+      const idxs = [];
+      for (let i = yi; i <= fi; i++) idxs.push(i);
+      const f = lsqFit(inp.time, strain, idxs);
+      if (f) A.strainRate2 = { value: f.slope / 100, nPoints: f.n, basis: `耐力点〜破断点 ${f.n} 点の 時間 vs ひずみ(%) 傾き ÷ 100` };
+    }
+  }
+
+  A.ok = !!(A.rm || A.elongation);
+
+  /* --- 判定（§16.1）：色だけでなく必ず理由を文字で持たせる --- */
+  const checks = [];
+  if (A.linear) {
+    const r2 = A.linear.r2;
+    const lv = r2 >= P.linearityR2Ok ? "ok" : (r2 >= P.linearityR2Warn ? "warn" : "ng");
+    checks.push({
+      level: lv, label: "弾性直線域の直線性",
+      detail: `R² = ${r2.toFixed(5)}（合格 ≥ ${P.linearityR2Ok} / 要確認 ≥ ${P.linearityR2Warn}）・${A.linear.nPoints} 点`,
+    });
+  } else {
+    checks.push({ level: "na", label: "弾性直線域の直線性", detail: "直線域を決定できないため未評価" });
+  }
+  if (P.rampCheck) {
+    if (A.rampRate) {
+      const v = A.rampRate.value;
+      const inRange = v >= P.rampMin && v <= P.rampMax;
+      checks.push({
+        level: inRange ? "ok" : "ng", label: "応力増加速度",
+        detail: `${fmtNum(v, 2)} MPa/s（許容範囲 ${fmtNum(P.rampMin, 1)}〜${fmtNum(P.rampMax, 1)} MPa/s・設定値）`,
+      });
+    } else {
+      checks.push({ level: "na", label: "応力増加速度", detail: "算出できないため未評価" });
+    }
+  }
+  const missing = [];
+  if (!A.rm) missing.push("引張強さ Rm");
+  if (!A.yieldV) missing.push("耐力（速度法）");
+  if (!A.offset02) missing.push("0.2% 耐力");
+  if (!A.elongation) missing.push("伸び");
+  checks.push({
+    level: missing.length === 0 ? "ok" : (missing.length >= 3 ? "ng" : "warn"),
+    label: "主要値の算出",
+    detail: missing.length === 0 ? "引張強さ・耐力・0.2%耐力・伸びをすべて算出" : `未算出: ${missing.join(" / ")}`,
+  });
+  const rank = { ok: 0, warn: 1, ng: 2, na: 1 };
+  let worst = "ok";
+  for (const c of checks) if (rank[c.level] > rank[worst]) worst = c.level === "na" ? "warn" : c.level;
+  A.verdict = {
+    level: A.ok ? worst : "na",
+    label: !A.ok ? "解析なし" : worst === "ok" ? "合格" : worst === "warn" ? "要確認" : "不合格",
+    checks,
+  };
+  return A;
+}
+
+/* ───────────────── 16. 解析結果の行データ（画面・CSV 共用） ───────────────── */
+function analysisRows(A) {
+  if (!A) return [];
+  const rows = [];
+  const add = (item, value, unit, basis) => rows.push({ item, value, unit, basis });
+  add("引張強さ Rm", A.rm ? fmtNum(A.rm.value, 1) : "", "N/mm2", A.rm ? A.rm.basis : "算出不可");
+  add("最大試験力 Fm", fin(A.max?.force) ? fmtNum(A.max.force, 1) : "", "N", A.max ? `第 ${A.max.index + 1} 点` : "");
+  add("耐力（速度法）", A.yieldV && fin(A.yieldV.stress) ? fmtNum(A.yieldV.stress, 1) : "", "N/mm2", A.yieldV ? A.yieldV.basis : "算出不可");
+  add("0.2% 耐力", A.offset02 ? fmtNum(A.offset02.stress, 1) : "", "N/mm2", A.offset02 ? A.offset02.basis : "算出不可");
+  add("伸び（破断ひずみ）", A.elongation ? fmtNum(A.elongation.value, 2) : "", "%", A.elongation ? `${A.elongation.method}／${A.elongation.basis}` : "算出不可");
+  add("伸び（島津法）", A.fractureB && fin(A.fractureB.strain) ? fmtNum(A.fractureB.strain, 2) : "", "%", A.fractureB ? A.fractureB.basis : "算出不可");
+  add("応力増加速度", A.rampRate ? fmtNum(A.rampRate.value, 2) : "", "MPa/s", A.rampRate ? A.rampRate.basis : "算出不可");
+  add("ヤング率 E", A.youngs ? fmtNum(A.youngs.nmm2, 0) : "", "N/mm2", A.linear ? `弾性勾配 ${fmtNum(A.linear.slope, 2)} (N/mm² per ε%) × 100` : "算出不可");
+  add("ヤング率 E", A.youngs ? fmtNum(A.youngs.gpa, 1) : "", "GPa", A.youngs ? "N/mm² を 1/1000 して換算" : "算出不可");
+  add("ひずみ速度①（弾性）", A.strainRate1 ? A.strainRate1.value.toExponential(3) : "", "/sec", A.strainRate1 ? A.strainRate1.basis : "算出不可");
+  add("ひずみ速度②（塑性）", A.strainRate2 ? A.strainRate2.value.toExponential(3) : "", "/sec", A.strainRate2 ? A.strainRate2.basis : "算出不可");
+  add("直線性 R²", A.linear ? A.linear.r2.toFixed(5) : "", "−", A.linear ? A.linear.basis : "算出不可");
+  add("判定", A.verdict ? A.verdict.label : "", "−", A.verdict ? A.verdict.checks.map((c) => `${c.label}: ${c.detail}`).join(" / ") : "");
+  return rows;
+}
+
+/* ───────────────── 17. CSV 入力（§11.1 / 列マッピング・文字コード自動判別） ───────────────── */
+const CSV_ROLES = [
+  { role: "time",         label: "時間",     unit: "sec",    pats: [/^時間/, /^時刻/, /time/i, /^t$/i] },
+  { role: "force",        label: "試験力",   unit: "N",      pats: [/^試験力/, /^荷重/, /force/i, /^load/i] },
+  { role: "stress",       label: "応力",     unit: "N/mm2",  pats: [/^応力/, /stress/i] },
+  { role: "displacement", label: "変位計1",  unit: "mm",     pats: [/^変位計/, /^伸び計/, /extensometer/i, /^変位/, /^伸び/] },
+  { role: "stroke",       label: "ストローク", unit: "mm",   pats: [/^ストローク/, /stroke/i, /クロスヘッド/] },
+];
+function decodeTextAuto(bytes) {
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    return { text: new TextDecoder("utf-8").decode(bytes.subarray(3)), enc: "UTF-8（BOM 検出）" };
+  }
+  for (const [label, name] of [["utf-8", "UTF-8（strict 判定）"], ["shift_jis", "Shift_JIS"], ["euc-jp", "EUC-JP"]]) {
+    try {
+      const text = new TextDecoder(label, { fatal: true }).decode(bytes);
+      return { text, enc: name };
+    } catch (_) { /* 次の候補へ */ }
+  }
+  return { text: new TextDecoder("utf-8").decode(bytes), enc: "UTF-8（不正バイトは置換）" };
+}
+function splitCsvLine(line) {
+  const out = [];
+  let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) {
+      if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += c;
+    } else if (c === '"') q = true;
+    else if (c === "," || c === "\t") { out.push(cur); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+const toNumber = (s) => {
+  if (s == null) return NaN;
+  const t = String(s).replace(/[, ]/g, "").trim();
+  if (!t || !/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(t)) return NaN;
+  return parseFloat(t);
+};
+/** CSV テキスト → {headers, headerRow, rows(生行), map(role→列index)} */
+function parseInputCsv(text) {
+  const lines = text.split(/\r\n|\n|\r/).filter((l, i, a) => l.length > 0 || i < a.length - 1);
+  const cells = lines.map(splitCsvLine);
+  let headerRow = -1, bestScore = 0, bestMap = null;
+  const limit = Math.min(cells.length, 40);
+  for (let r = 0; r < limit; r++) {
+    const hdr = cells[r].map((h) => h.trim());
+    if (hdr.filter(Boolean).length < 2) continue;
+    const used = new Set();
+    const map = {};
+    let score = 0;
+    for (const spec of CSV_ROLES) {
+      let pick = -1, pri = 99;
+      hdr.forEach((h, ci) => {
+        if (!h || used.has(ci)) return;
+        spec.pats.forEach((p, pi) => {
+          if (p.test(h) && pi < pri) { pri = pi; pick = ci; }
+        });
+      });
+      if (pick >= 0) { map[spec.role] = pick; used.add(pick); score++; }
+    }
+    if (score > bestScore) { bestScore = score; headerRow = r; bestMap = map; }
+  }
+  if (headerRow < 0 || !bestMap || bestMap.force == null) {
+    return { ok: false, reason: "ヘッダ行から「試験力」に相当する列を特定できませんでした" };
+  }
+  const headers = cells[headerRow].map((h) => h.trim());
+  const rows = [];
+  for (let r = headerRow + 1; r < cells.length; r++) {
+    const v = toNumber(cells[r][bestMap.force]);
+    if (!isFinite(v)) continue;                       // 単位行・空行などは読み飛ばす
+    rows.push(cells[r]);
+  }
+  return { ok: true, headers, headerRow, rows, map: bestMap };
+}
+function csvColumns(parsed, map) {
+  const n = parsed.rows.length;
+  const cols = {};
+  for (const spec of CSV_ROLES) {
+    const ci = map[spec.role];
+    if (ci == null || ci < 0) { cols[spec.role] = null; continue; }
+    const arr = new Float64Array(n);
+    for (let i = 0; i < n; i++) arr[i] = toNumber(parsed.rows[i][ci]);
+    cols[spec.role] = arr;
+  }
+  return cols;
+}
+/* ───────────────── 18. 線図（内蔵 Canvas レンダラ・外部ライブラリなし） ───────────────── */
+function niceTicks(min, max, count) {
+  if (!(isFinite(min) && isFinite(max))) return [];
+  if (min === max) { min -= 0.5; max += 0.5; }
+  const span = max - min;
+  const raw = span / Math.max(1, count);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10) * mag;
+  const out = [];
+  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-6; v += step) out.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+  return out;
+}
+function tickLabel(v, step) {
+  const d = step >= 100 ? 0 : step >= 10 ? 0 : step >= 1 ? 1 : step >= 0.1 ? 2 : 3;
+  return v.toLocaleString("ja-JP", { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
+class LineChart {
+  constructor(host) {
+    this.host = host;
+    this.canvas = document.createElement("canvas");
+    this.ctx = this.canvas.getContext("2d");
+    this.tip = document.createElement("div");
+    this.tip.className = "chart__tip";
+    this.tip.hidden = true;
+    host.append(this.canvas, this.tip);
+    this.spec = null;
+    this.hover = null;
+    this.ro = new ResizeObserver(() => this.draw());
+    this.ro.observe(host);
+    this.canvas.addEventListener("mousemove", (e) => this.onMove(e));
+    this.canvas.addEventListener("mouseleave", () => { this.hover = null; this.tip.hidden = true; this.draw(); });
+  }
+  destroy() { this.ro.disconnect(); this.host.innerHTML = ""; }
+  setData(spec) { this.spec = spec; this.hover = null; this.tip.hidden = true; this.draw(); }
+
+  bounds() {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const s of this.spec.series) {
+      if (s.scale === false || !s.xs.length) continue;
+      for (let i = 0; i < s.xs.length; i++) {
+        const x = s.xs[i], y = s.ys[i];
+        if (!fin(x) || !fin(y)) continue;
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+    if (!isFinite(x0)) return null;
+    const mx = (x1 - x0) * 0.04 || 1, my = (y1 - y0) * 0.04 || 1;   // 実データに 4% マージン
+    return { x0: x0 - mx, x1: x1 + mx, y0: y0 - my, y1: y1 + my };
+  }
+
+  draw() {
+    const spec = this.spec;
+    if (!spec) return;
+    const w = this.host.clientWidth, h = this.host.clientHeight;
+    if (w < 40 || h < 40) return;
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = Math.round(w * dpr);
+    this.canvas.height = Math.round(h * dpr);
+    this.canvas.style.width = w + "px";
+    this.canvas.style.height = h + "px";
+    const ctx = this.ctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const fs = cssNum("--chart-fs") || 11;
+    ctx.font = `${fs}px ${cssVar("--font")}`;
+    const padL = cssNum("--chart-pad-l"), padR = cssNum("--chart-pad-r");
+    const padT = cssNum("--chart-pad-t"), padB = cssNum("--chart-pad-b");
+    const pw = w - padL - padR, ph = h - padT - padB;
+    if (pw < 20 || ph < 20) return;
+
+    const ink = cssVar("--chart-ink"), grid = cssVar("--chart-grid"), axis = cssVar("--chart-axis");
+    const b = this.bounds();
+    if (!b) {
+      ctx.fillStyle = ink;
+      ctx.textAlign = "center";
+      ctx.fillText("描画できるデータ点がありません", w / 2, h / 2);
+      return;
+    }
+    const X = (v) => padL + ((v - b.x0) / (b.x1 - b.x0)) * pw;
+    const Y = (v) => padT + ph - ((v - b.y0) / (b.y1 - b.y0)) * ph;
+    this.map = { X, Y, b, padL, padT, pw, ph };
+
+    /* 直線域バンド */
+    for (const band of spec.bands || []) {
+      if (!fin(band.from) || !fin(band.to)) continue;
+      const xa = Math.max(padL, X(band.from)), xb = Math.min(padL + pw, X(band.to));
+      if (xb <= xa) continue;
+      ctx.fillStyle = cssVar("--chart-band");
+      ctx.fillRect(xa, padT, xb - xa, ph);
+    }
+
+    /* グリッド・目盛 */
+    const xt = niceTicks(b.x0, b.x1, Math.max(3, Math.min(8, Math.round(pw / 90))));
+    const yt = niceTicks(b.y0, b.y1, Math.max(3, Math.min(7, Math.round(ph / 46))));
+    const xs = xt.length > 1 ? xt[1] - xt[0] : 1, ys = yt.length > 1 ? yt[1] - yt[0] : 1;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = grid;
+    ctx.beginPath();
+    for (const t of xt) { const x = Math.round(X(t)) + 0.5; ctx.moveTo(x, padT); ctx.lineTo(x, padT + ph); }
+    for (const t of yt) { const y = Math.round(Y(t)) + 0.5; ctx.moveTo(padL, y); ctx.lineTo(padL + pw, y); }
+    ctx.stroke();
+
+    ctx.fillStyle = ink;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (const t of xt) ctx.fillText(tickLabel(t, xs), X(t), padT + ph + 6);
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (const t of yt) ctx.fillText(tickLabel(t, ys), padL - 7, Y(t));
+
+    /* 軸線・軸ラベル（単位を必ず付ける） */
+    ctx.strokeStyle = axis;
+    ctx.beginPath();
+    ctx.moveTo(padL + 0.5, padT); ctx.lineTo(padL + 0.5, padT + ph + 0.5); ctx.lineTo(padL + pw, padT + ph + 0.5);
+    ctx.stroke();
+    ctx.fillStyle = ink;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(spec.xLabel, padL + pw, h - 6);
+    ctx.save();
+    ctx.translate(11, padT);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "right";
+    ctx.textBaseline = "top";
+    ctx.fillText(spec.yLabel, 0, 0);
+    ctx.restore();
+
+    /* 系列 */
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(padL, padT, pw, ph);
+    ctx.clip();
+    for (const s of spec.series) this.drawSeries(s, X, Y, pw);
+    /* マーカー（形＋文字を必ず添える） */
+    for (const m of spec.markers || []) {
+      if (!fin(m.x) || !fin(m.y)) continue;
+      this.drawMarker(X(m.x), Y(m.y), m.shape, m.color, m.label, fs, m.below);
+    }
+    /* ホバー十字線 */
+    if (this.hover) {
+      ctx.strokeStyle = axis;
+      ctx.setLineDash([3, 3]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(X(this.hover.x), padT);
+      ctx.lineTo(X(this.hover.x), padT + ph);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = cssVar("--chart-line");
+      ctx.beginPath();
+      ctx.arc(X(this.hover.x), Y(this.hover.y), 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  drawSeries(s, X, Y, pw) {
+    const ctx = this.ctx;
+    const n = s.xs.length;
+    if (!n) return;
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = s.width || 1.6;
+    ctx.setLineDash(s.dash || []);
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    if (n > pw * 2) {
+      /* 画素列ごとに min/max へ間引く（形は保ったまま高速に描く） */
+      let col = -1, mn = 0, mx = 0, first = true, lastX = 0;
+      for (let i = 0; i < n; i++) {
+        const xv = s.xs[i], yv = s.ys[i];
+        if (!fin(xv) || !fin(yv)) continue;
+        const px = Math.round(X(xv));
+        if (px !== col) {
+          if (col >= 0) {
+            if (first) { ctx.moveTo(lastX, Y(mn)); first = false; } else ctx.lineTo(lastX, Y(mn));
+            ctx.lineTo(lastX, Y(mx));
+          }
+          col = px; mn = yv; mx = yv; lastX = px;
+        } else {
+          if (yv < mn) mn = yv;
+          if (yv > mx) mx = yv;
+        }
+      }
+      if (col >= 0) {
+        if (first) ctx.moveTo(lastX, Y(mn)); else ctx.lineTo(lastX, Y(mn));
+        ctx.lineTo(lastX, Y(mx));
+      }
+    } else {
+      let started = false;
+      for (let i = 0; i < n; i++) {
+        const xv = s.xs[i], yv = s.ys[i];
+        if (!fin(xv) || !fin(yv)) { started = false; continue; }
+        const px = X(xv), py = Y(yv);
+        if (!started) { ctx.moveTo(px, py); started = true; } else ctx.lineTo(px, py);
+      }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  drawMarker(px, py, shape, color, label, fs, below) {
+    const ctx = this.ctx;
+    const r = 6;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (shape === "triangle-down") {
+      ctx.moveTo(px - r, py - r); ctx.lineTo(px + r, py - r); ctx.lineTo(px, py + r * .9); ctx.closePath();
+      ctx.fillStyle = cssVar("--chart-halo"); ctx.fill(); ctx.stroke();
+    } else if (shape === "x") {
+      ctx.moveTo(px - r, py - r); ctx.lineTo(px + r, py + r);
+      ctx.moveTo(px + r, py - r); ctx.lineTo(px - r, py + r);
+      ctx.stroke();
+    } else if (shape === "star") {
+      for (let i = 0; i < 10; i++) {
+        const rad = i % 2 ? r * .45 : r;
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const x = px + Math.cos(a) * rad, y = py + Math.sin(a) * rad;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.arc(px, py, r * .7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (label) {
+      ctx.font = `${fs}px ${cssVar("--font")}`;
+      const m = this.map;
+      const tw = ctx.measureText(label).width;
+      /* 作図領域からはみ出す側には置かない（切れて読めなくなるため反対側へ回す） */
+      let lx = px + r + 3, align = "left";
+      if (m && lx + tw > m.padL + m.pw) { lx = px - r - 3; align = "right"; }
+      let ly = below ? py + r + 3 : py - 3;
+      let baseline = below ? "top" : "bottom";
+      if (m && !below && py - r - fs < m.padT) { ly = py + r + 3; baseline = "top"; }
+      if (m && below && py + r + fs > m.padT + m.ph) { ly = py - 3; baseline = "bottom"; }
+      ctx.textAlign = align;
+      ctx.textBaseline = baseline;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = cssVar("--chart-halo");
+      ctx.strokeText(label, lx, ly);
+      ctx.fillStyle = color;
+      ctx.fillText(label, lx, ly);
+    }
+    ctx.restore();
+  }
+
+  onMove(ev) {
+    if (!this.spec || !this.map) return;
+    const main = this.spec.series.find((s) => s.primary);
+    if (!main || !main.xs.length) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const mx = ev.clientX - rect.left;
+    const { X, Y } = this.map;
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < main.xs.length; i++) {
+      if (!fin(main.xs[i]) || !fin(main.ys[i])) continue;
+      const d = Math.abs(X(main.xs[i]) - mx);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best < 0 || bestD > 40) { this.hover = null; this.tip.hidden = true; this.draw(); return; }
+    this.hover = { x: main.xs[best], y: main.ys[best], i: best };
+    this.tip.hidden = false;
+    this.tip.textContent = `#${best + 1}　${this.spec.xShort} ${fmtNum(main.xs[best], 3)} ${this.spec.xUnit}　/　${this.spec.yShort} ${fmtNum(main.ys[best], 2)} ${this.spec.yUnit}`;
+    this.tip.style.left = `${X(main.xs[best])}px`;
+    this.tip.style.top = `${Y(main.ys[best]) - 10}px`;
+    this.draw();
+  }
+}
+
+/* 軸定義（§13.1） */
+const AXES = {
+  strain:       { label: "ひずみ ε (%)",        short: "ε", unit: "%",      key: "strain" },
+  displacement: { label: "変位 (mm)",           short: "変位", unit: "mm",  key: "displacement" },
+  time:         { label: "時間 (sec)",          short: "t", unit: "sec",    key: "time" },
+  stress:       { label: "応力 σ (N/mm²)",      short: "σ", unit: "N/mm²",  key: "stress" },
+  force:        { label: "試験力 F (N)",        short: "F", unit: "N",      key: "force" },
+  velocity:     { label: "速度 (mm/min)",       short: "v", unit: "mm/min", key: "velocity" },
+};
+
+/* ============================================================================
+ * 19. アプリケーション状態
+ * ==========================================================================*/
+const LS_KEY = "trapezium-html-tool/params/v1";
+const state = {
+  entries: [],
+  selectedId: null,
+  view: "single",              // 'single' | 'summary'
+  tab: "report",
+  busy: false,
+  progress: null,
+  params: { ...DEFAULT_PARAMS },
+  sort: { key: "name", dir: 1 },
+  chart: { x: "strain", y: "stress", markers: true, fit: true },
+  filter: "",
+  undo: null,
+};
+let seq = 0;
+const charts = [];
+
+function loadParams() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) Object.assign(state.params, JSON.parse(raw));
+  } catch (_) { /* file:// で localStorage が使えない環境もある。既定値で続行する。 */ }
+}
+function saveParams() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state.params)); } catch (_) {}
+}
+
+const selected = () => state.entries.find((e) => e.id === state.selectedId) || null;
+const doneEntries = () => state.entries.filter((e) => e.status === "done");
+const queuedEntries = () => state.entries.filter((e) => e.status === "queued");
+const allOutputs = () => doneEntries().reduce((a, e) => a + e.outputs.length, 0);
+const outputBytes = () => doneEntries().reduce((a, e) => a + e.outputs.reduce((s, o) => s + o.bytes.length, 0), 0);
+
+/* ───────────────── 20. 入力の受け取り ───────────────── */
+function addFiles(list) {
+  const files = Array.from(list || []);
+  if (!files.length) return;
+  for (const f of files) {
+    const base = f.name.replace(/\.[^.]*$/, "");
+    const ext = (f.name.match(/\.[^.]*$/) || [""])[0].toLowerCase();
+    state.entries.push({
+      id: ++seq, file: f, name: f.name, base, ext, size: f.size,
+      kind: ext === ".csv" ? "csv" : "dat",
+      status: "queued", error: null, outputs: [], analysis: null,
+      areaOverride: { mode: "auto", t: null, w: null, d: null, A: null },
+    });
+  }
+  if (!state.selectedId) state.selectedId = state.entries[0].id;
+  renderAll();
+}
+
+/* ───────────────── 21. 変換パイプライン（§2） ───────────────── */
+async function processEntry(entry) {
+  entry.status = "running";
+  renderRail(); renderCta();
+  await sleep(0);                                     // 画面に「変換中」を出してから重い処理へ
+  try {
+    const buf = await entry.file.arrayBuffer();
+    const data = new Uint8Array(buf);
+    entry.crc = crc32(data);
+    entry.size = data.length;
+
+    if (entry.kind === "csv") {
+      const { text, enc } = decodeTextAuto(data);
+      const parsed = parseInputCsv(text);
+      if (!parsed.ok) throw new Error(parsed.reason);
+      entry.csv = { enc, ...parsed, map: { ...parsed.map } };
+      entry.fmt = "csv";
+      entry.fmtBasis = `CSV 入力（文字コード: ${enc}）`;
+      entry.results = []; entry.report = []; entry.cond = {}; entry.audit = [];
+      entry.wave = null; entry.tokenCount = 0;
+    } else {
+      const det = detectFormat(data, entry.name);
+      entry.fmt = det.fmt;
+      entry.fmtBasis = det.basis;
+
+      const tokens = det.fmt === "vtav" ? walkVtavStrings(data) : walkXtuxStrings(data);
+      entry.tokenCount = tokens.length;
+
+      if (det.fmt === "vtav") {
+        entry.results = parseResultsVtav(data, tokens);
+        entry.conf = "high(byte-anchor)";
+      } else {
+        entry.results = parseResultsXtux(tokens);
+        entry.conf = "high(order)";
+      }
+      entry.report = buildReport(entry.results);
+
+      const cond = extractConditions(tokens);
+      entry.condFilled = [];
+      if (det.fmt === "xtux") {
+        // §5.4.2 xtux の寸法は UTF-8 TLV 側にあるため、同じ data を UTF-8 ウォーカーで再走査して補完
+        entry.condFilled = supplementXtuxDims(cond, walkVtavStrings(data));
+      }
+      entry.cond = cond;
+
+      entry.wave = extractWaveform(data);
+      entry.audit = det.fmt === "vtav" ? parseAudit(tokens) : [];
+      entry._waveCsv = null;
+    }
+    runAnalysis(entry);
+    buildOutputs(entry);
+    entry.status = "done";
+  } catch (err) {
+    entry.status = "error";
+    entry.error = (err && err.message) ? err.message : String(err);
+  }
+}
+
+async function runConversion() {
+  const queue = queuedEntries();
+  if (!queue.length || state.busy) return;
+  state.busy = true;
+  for (let i = 0; i < queue.length; i++) {
+    state.progress = { done: i, total: queue.length, name: queue[i].name };
+    renderCta();
+    await processEntry(queue[i]);
+    if (!state.selectedId || !state.entries.some((e) => e.id === state.selectedId)) state.selectedId = queue[i].id;
+  }
+  state.progress = null;
+  state.busy = false;
+  const firstDone = doneEntries()[0];
+  if (firstDone && (!selected() || selected().status !== "done")) state.selectedId = firstDone.id;
+  renderAll();
+}
+
+/* ───────────────── 22. 断面積の決定（§11.2） ───────────────── */
+const condNum = (cond, key) => {
+  const v = cond ? cond[key] : null;
+  const f = v == null ? NaN : parseFloat(v);
+  return isFinite(f) ? f : NaN;
+};
+function resolveArea(entry) {
+  const o = entry.areaOverride || {};
+  if (o.mode === "direct" && fin(o.A) && o.A > 0) return { area: o.A, basis: "断面積 A を直接入力" };
+  if (o.mode === "plate" && fin(o.t) && fin(o.w) && o.t > 0 && o.w > 0) {
+    return { area: o.t * o.w, basis: `手入力の平板寸法 A = 厚さ ${fmtNum(o.t, 3)} mm × 幅 ${fmtNum(o.w, 3)} mm` };
+  }
+  if (o.mode === "round" && fin(o.d) && o.d > 0) {
+    return { area: (Math.PI / 4) * o.d * o.d, basis: `手入力の丸棒寸法 A = π/4 × (直径 ${fmtNum(o.d, 3)} mm)²` };
+  }
+  const t = condNum(entry.cond, "厚さ"), w = condNum(entry.cond, "幅"), d = condNum(entry.cond, "直径");
+  if (fin(t) && fin(w) && t > 0 && w > 0) {
+    return { area: t * w, basis: `試験条件（平板）A = 厚さ ${fmtNum(t, 3)} mm × 幅 ${fmtNum(w, 3)} mm` };
+  }
+  if (fin(d) && d > 0) {
+    return { area: (Math.PI / 4) * d * d, basis: `試験条件（丸棒）A = π/4 × (直径 ${fmtNum(d, 3)} mm)²` };
+  }
+  return { area: null, basis: "" };
+}
+
+/* ───────────────── 23. 解析の実行 ───────────────── */
+function runAnalysis(entry) {
+  entry.analysis = null;
+  entry.analysisBlock = null;
+  const P = state.params;
+
+  if (entry.kind === "csv") {
+    if (!entry.csv || !entry.csv.ok) { entry.analysisBlock = "CSV を読み取れませんでした"; return; }
+    const cols = csvColumns(entry.csv, entry.csv.map);
+    if (!cols.force) { entry.analysisBlock = "試験力の列が割り当てられていません"; return; }
+    const area = resolveArea(entry);
+    entry.area = cols.stress ? null : area.area;
+    entry.areaBasis = area.basis;
+    entry.analysis = analyze({
+      time: cols.time, force: cols.force, stress: cols.stress,
+      displacement: cols.displacement, stroke: cols.stroke,
+      area: area.area, areaBasis: area.basis,
+      stressSource: cols.stress ? "CSV の応力列をそのまま使用（換算なし・§11.2 A）" : null,
+    }, P);
+    return;
+  }
+
+  const w = entry.wave;
+  if (!w || !w.ok) {
+    entry.analysisBlock = `波形データが無いため解析できません（${w ? w.reason : "波形未抽出"}）`;
+    return;
+  }
+  const c = w.columns;
+  if (!c.Force_N) { entry.analysisBlock = "波形に試験力（Force_N）列が無いため解析できません"; return; }
+  const area = resolveArea(entry);
+  entry.area = area.area;
+  entry.areaBasis = area.basis;
+  entry.analysis = analyze({
+    time: c.Time_sec || null, force: c.Force_N, stress: null,
+    displacement: c.Extensometer_mm || null, stroke: c.Stroke_mm || null,
+    area: area.area, areaBasis: area.basis,
+    stressSource: null,                       // DAT は全点 SS 応力を force ÷ A で復元（§11.2 B）
+  }, P);
+}
+function reanalyzeAll() {
+  for (const e of state.entries) {
+    if (e.status !== "done") continue;
+    runAnalysis(e);
+    buildOutputs(e);
+  }
+}
+
+/* ───────────────── 24. 出力 CSV の生成（§6 / §16） ───────────────── */
+function buildOutputs(entry) {
+  const outs = [];
+  const push = (name, kind, text, rows) => outs.push({ name, kind, bytes: csvBytes(text), rows });
+
+  if (entry.kind === "dat") {
+    push(`${entry.base}_report.csv`, "report", toCsv([
+      ["item", "value", "unit", "source_label"],
+      ...entry.report.map((r) => [r.item, r.value, r.unit, r.source_label]),
+    ]), entry.report.length);
+
+    push(`${entry.base}_results.csv`, "results", toCsv([
+      ["label", "value", "unit", "param", "confidence"],
+      ...entry.results.map((r) => [r.label, r.value, r.unit, r.param || "", entry.conf]),
+    ]), entry.results.length);
+
+    const condRows = Object.entries(entry.cond);
+    push(`${entry.base}_conditions.csv`, "conditions", toCsv([["key", "value"], ...condRows]), condRows.length);
+
+    if (entry.wave && entry.wave.ok) {
+      if (!entry._waveCsv) {
+        const names = Object.keys(entry.wave.columns);
+        const rows = [["#", ...names]];
+        const cols = names.map((n) => entry.wave.columns[n]);
+        for (let i = 0; i < entry.wave.points; i++) {
+          rows.push([i, ...cols.map((c) => pyFloat(c[i]))]);
+        }
+        entry._waveCsv = toCsv(rows);
+      }
+      push(`${entry.base}_waveform.csv`, "waveform", entry._waveCsv, entry.wave.points);
+    }
+    if (entry.fmt === "vtav" && state.params.auditOut && entry.audit && entry.audit.length) {
+      push(`${entry.base}_audit.csv`, "audit", toCsv([
+        ["item", "change", "datetime", "user"],
+        ...entry.audit.map((r) => [r.item, r.change, r.datetime, r.user]),
+      ]), entry.audit.length);
+    }
+  }
+
+  if (entry.analysis && entry.analysis.ok) {
+    const rows = analysisRows(entry.analysis);
+    push(`${entry.base}_analysis.csv`, "analysis", toCsv([
+      ["item", "value", "unit", "basis"],
+      ...rows.map((r) => [r.item, r.value, r.unit, r.basis]),
+    ]), rows.length);
+  }
+  entry.outputs = outs;
+}
+
+/* 一覧（§16.2） */
+const SUMMARY_COLS = [
+  { key: "date",   label: "試験日",            unit: "",       num: false },
+  { key: "name",   label: "ファイル名",         unit: "",       num: false },
+  { key: "yieldV", label: "耐力(速度法)",       unit: "N/mm²",  num: true, d: 1 },
+  { key: "rp02",   label: "0.2%耐力",          unit: "N/mm²",  num: true, d: 1 },
+  { key: "rm",     label: "引張強さ",           unit: "N/mm²",  num: true, d: 1 },
+  { key: "elong",  label: "破断伸び",           unit: "%",      num: true, d: 2 },
+  { key: "elongS", label: "島津伸び",           unit: "%",      num: true, d: 2 },
+  { key: "young",  label: "ヤング率",           unit: "N/mm²",  num: true, d: 0 },
+  { key: "ramp",   label: "応力増加速度",       unit: "MPa/s",  num: true, d: 2 },
+  { key: "sr1",    label: "ひずみ速度①",        unit: "s⁻¹",    num: true, exp: true },
+  { key: "sr2",    label: "ひずみ速度②",        unit: "s⁻¹",    num: true, exp: true },
+  { key: "verdict",label: "判定",               unit: "",       num: false },
+];
+function summaryRow(e) {
+  const A = e.analysis;
+  return {
+    id: e.id,
+    date: (e.cond && (e.cond["試験日"] || e.cond["作成日"])) || "",
+    name: e.name,
+    yieldV: A && A.yieldV ? A.yieldV.stress : NaN,
+    rp02: A && A.offset02 ? A.offset02.stress : NaN,
+    rm: A && A.rm ? A.rm.value : NaN,
+    elong: A && A.elongation ? A.elongation.value : NaN,
+    elongS: A && A.fractureB ? A.fractureB.strain : NaN,
+    young: A && A.youngs ? A.youngs.nmm2 : NaN,
+    ramp: A && A.rampRate ? A.rampRate.value : NaN,
+    sr1: A && A.strainRate1 ? A.strainRate1.value : NaN,
+    sr2: A && A.strainRate2 ? A.strainRate2.value : NaN,
+    verdict: A && A.verdict ? A.verdict.label : (e.status === "error" ? "変換失敗" : "解析なし"),
+    level: A && A.verdict ? A.verdict.level : "na",
+  };
+}
+function summaryRows() { return doneEntries().map(summaryRow); }
+function summaryCsvText() {
+  const head = SUMMARY_COLS.map((c) => c.unit ? `${c.label}[${c.unit}]` : c.label);
+  const body = summaryRows().map((r) => SUMMARY_COLS.map((c) => {
+    const v = r[c.key];
+    if (!c.num) return v;
+    if (!fin(v)) return "";
+    return c.exp ? v.toExponential(3) : v.toFixed(c.d);
+  }));
+  return toCsv([head, ...body]);
+}
+
+/* ───────────────── 25. ダウンロード（§7） ───────────────── */
+function downloadOutput(entry, name) {
+  const o = entry.outputs.find((x) => x.name === name);
+  if (!o) return;
+  downloadBytes(o.bytes, name, "text/csv");
+}
+function downloadZip() {
+  const list = doneEntries();
+  if (!list.length) return;
+  const files = [];
+  const used = new Map();
+  for (const e of list) {
+    let folder = e.base;
+    const c = (used.get(folder) || 0) + 1;
+    used.set(folder, c);
+    if (c > 1) folder = `${folder}(${c})`;            // 同名ファイル対策
+    for (const o of e.outputs) files.push({ path: `${folder}/${o.name}`, data: o.bytes });
+  }
+  if (summaryRows().length) files.push({ path: "summary.csv", data: csvBytes(summaryCsvText()) });
+  const zip = zipStore(files);
+  downloadBytes(zip, `trapezium_csv_${nowStamp()}.zip`, "application/zip");
+  toast(`${files.length} ファイルを ZIP にまとめました`);
+}
+/* ============================================================================
+ * 26. 描画
+ * ==========================================================================*/
+const elStage = $("#stage");
+const elLayout = $("#layout");
+const elRail = $("#fileList");
+const elRailFoot = $("#railFoot");
+const elCta = $("#cta");
+const elCtaNote = $("#ctaNote");
+
+function renderAll() { renderCta(); renderRail(); renderStage(); }
+
+/**
+ * 入力イベントの最中に innerHTML を差し替えると、フォーカス中の要素が
+ * 取り除かれて DOM 例外になることがある。描画は必ず次フレームへまとめる。
+ */
+let _renderReq = 0, _renderScheduled = false;
+function scheduleRender(all) {
+  _renderReq = Math.max(_renderReq, all ? 2 : 1);
+  if (_renderScheduled) return;
+  _renderScheduled = true;
+  requestAnimationFrame(() => {
+    _renderScheduled = false;
+    const req = _renderReq;
+    _renderReq = 0;
+    if (req === 2) renderAll(); else renderStage();
+  });
+}
+
+/* ---- 主要動作（CTA）: 常に 1 つ・位置固定・ラベルだけが状態で変わる ---- */
+function ctaState() {
+  const q = queuedEntries();
+  const d = doneEntries();
+  if (state.busy) {
+    const p = state.progress || { done: 0, total: 0, name: "" };
+    return { label: `変換中… ${Math.min(p.done + 1, p.total)} / ${p.total} 件`, note: `現在: ${p.name}`, disabled: true, act: "" };
+  }
+  if (q.length) {
+    const bytes = q.reduce((a, e) => a + e.size, 0);
+    const csvN = q.filter((e) => e.kind === "csv").length;
+    return {
+      label: `${q.length} 件を変換する`,
+      note: `合計 ${fmtBytes(bytes)}${csvN ? `／うち CSV ${csvN} 件は解析のみ` : ""}`,
+      disabled: false, act: "convert",
+    };
+  }
+  if (d.length) {
+    const hasSummary = summaryRows().length > 0;
+    const files = allOutputs() + (hasSummary ? 1 : 0);
+    return {
+      label: `${files} ファイルを ZIP でダウンロード`,
+      note: `${d.length} 件分・CSV ${allOutputs()} 件${hasSummary ? " ＋ summary.csv" : ""}・${fmtBytes(outputBytes())}・UTF-8 BOM 付き`,
+      disabled: false, act: "zip",
+    };
+  }
+  if (state.entries.length) {
+    return { label: "ZIP でダウンロード", note: "変換に成功したファイルが 1 件もありません（各ファイルのエラー内容を確認してください）", disabled: true, act: "" };
+  }
+  return { label: "ファイルを変換する", note: ".xtux / .vtav / .csv を追加すると実行できます", disabled: true, act: "" };
+}
+function renderCta() {
+  const s = ctaState();
+  elCta.textContent = s.label;
+  elCta.disabled = s.disabled;
+  elCta.dataset.act = s.act;
+  elCta.setAttribute("aria-busy", state.busy ? "true" : "false");
+  elCtaNote.textContent = s.note;
+  $("#miClearAll").disabled = state.entries.length === 0 || state.busy;
+  $("#miClearResults").disabled = doneEntries().length === 0 || state.busy;
+}
+
+/* ---- 左レール ---- */
+function entryStatusChip(e) {
+  if (e.status === "queued") return statusChip("na", "未変換");
+  if (e.status === "running") return statusChip("busy", "変換中");
+  if (e.status === "error") return statusChip("err", "失敗");
+  const v = e.analysis && e.analysis.verdict;
+  if (!v || v.level === "na") return statusChip("warn", "変換済・解析なし");
+  if (v.level === "ok") return statusChip("ok", "変換済・合格");
+  if (v.level === "warn") return statusChip("warn", "変換済・要確認");
+  return statusChip("err", "変換済・不合格");
+}
+function renderRail() {
+  elLayout.dataset.empty = state.entries.length ? "false" : "true";
+  elRail.innerHTML = state.entries.map((e) => {
+    const meta = e.status === "done"
+      ? `${e.fmt.toUpperCase()}・${fmtBytes(e.size)}・結果 ${e.kind === "csv" ? `${e.csv ? e.csv.rows.length : 0} 行` : `${e.results.length} 件`}`
+      : `${e.kind === "csv" ? "CSV" : e.ext.replace(".", "").toUpperCase() || "?"}・${fmtBytes(e.size)}`;
+    return `<button class="fileitem" role="option" data-id="${e.id}" aria-selected="${e.id === state.selectedId}">
+      <span class="fileitem__name truncate">${esc(e.name)}</span>
+      <span class="fileitem__meta">${esc(meta)}</span>
+      <span class="fileitem__st">${entryStatusChip(e)}</span>
+    </button>`;
+  }).join("");
+  const outs = allOutputs();
+  elRailFoot.textContent = state.entries.length
+    ? `合計 ${state.entries.length} 件・変換済 ${doneEntries().length} 件・出力 ${outs} ファイル（${fmtBytes(outputBytes())}）`
+    : "";
+}
+
+/* ---- ステージ ---- */
+function renderStage() {
+  const act = document.activeElement;
+  const keepId = act && act.id && elStage.contains(act) ? act.id : null;
+  const keepSel = keepId && "selectionStart" in act ? [act.selectionStart, act.selectionEnd] : null;
+
+  for (const c of charts.splice(0)) c.destroy();
+
+  if (!state.entries.length) { elStage.innerHTML = emptyHtml(); return; }
+  elStage.innerHTML = state.view === "summary" ? summaryHtml() : singleHtml(selected());
+  if (state.view === "single" && state.tab === "charts") mountCharts(selected());
+
+  if (keepId) {
+    const el = document.getElementById(keepId);
+    if (el) { el.focus(); if (keepSel && "setSelectionRange" in el) try { el.setSelectionRange(keepSel[0], keepSel[1]); } catch (_) {} }
+  }
+}
+
+function emptyHtml() {
+  return `<div class="empty">
+    <div class="dropzone dropzone--hero" id="dzHero" tabindex="0" role="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      <span class="dropzone__title">試験ファイルをここにドロップ</span>
+      <span>クリックすると選択ダイアログを開きます　／　複数ファイル同時可</span>
+      <span class="mono">.xtux　.vtav　（変換＋解析）　.csv　（解析のみ）</span>
+    </div>
+    <div class="empty__points">
+      <div class="empty__point"><b>通信は一切しません</b>読み込み・変換・作図はすべてこのブラウザ内で完結します。</div>
+      <div class="empty__point"><b>出力は UTF-8 BOM 付き CSV</b>report / results / conditions / waveform（＋audit・analysis）。Excel で文字化けしません。</div>
+      <div class="empty__point"><b>分割 DL と ZIP 一括 DL</b>ファイル単位の個別ダウンロードと、全結果の ZIP をどちらも用意しています。</div>
+      <div class="empty__point"><b>線図と特性値まで</b>SS 曲線／時間-応力線図、引張強さ・耐力・伸び・応力増加速度を算出します。</div>
+    </div>
+  </div>`;
+}
+
+/* ---- 単票 ---- */
+/* 内側だけをスクロールさせるタブ（ページ自体はスクロールさせない方針） */
+const FIXED_TABS = new Set(["charts", "results", "waveform", "audit"]);
+const TABS = [
+  { key: "report",  label: "レポート" },
+  { key: "charts",  label: "線図" },
+  { key: "analysis", label: "解析" },
+  { key: "results", label: "結果全項目" },
+  { key: "waveform", label: "波形" },
+  { key: "audit",   label: "変更履歴" },
+];
+function tabAvailability(e) {
+  const a = {};
+  const reasons = [];
+  if (e.kind === "csv") {
+    a.report = false; a.results = false; a.waveform = false; a.audit = false;
+    reasons.push("CSV 入力のため レポート／結果全項目／波形／変更履歴はありません（変換部の対象は .xtux / .vtav です）");
+  } else {
+    a.report = true;
+    a.results = e.results.length > 0;
+    if (!a.results) reasons.push("結果サマリーを 1 件も抽出できませんでした");
+    a.waveform = !!(e.wave && e.wave.ok);
+    if (!a.waveform) reasons.push(`波形なし: ${e.wave ? e.wave.reason : "未抽出"}`);
+    a.audit = e.fmt === "vtav" && e.audit.length > 0;
+    if (!a.audit) reasons.push(e.fmt === "vtav" ? "変更履歴の行が見つかりませんでした" : "変更履歴は .vtav のみが対象です");
+  }
+  a.charts = !!(e.analysis && e.analysis.series && e.analysis.series.stress);
+  a.analysis = true;
+  if (!a.charts) reasons.push(`線図なし: ${e.analysisBlock || "応力が確定していないため作図できません"}`);
+  return { a, reasons };
+}
+function tabCount(e, key) {
+  switch (key) {
+    case "results": return e.results ? e.results.length : 0;
+    case "waveform": return e.wave && e.wave.ok ? e.wave.points : 0;
+    case "audit": return e.audit ? e.audit.length : 0;
+    default: return null;
+  }
+}
+function singleHtml(e) {
+  if (!e) return `<div class="empty"><p class="muted">左の一覧からファイルを選択してください。</p></div>`;
+  const badges = [];
+  badges.push(`<span class="badge badge--fmt">${esc((e.fmt || e.ext.replace(".", "") || "?").toUpperCase())}</span>`);
+  badges.push(`<span class="badge">サイズ <b>${fmtBytes(e.size)}</b></span>`);
+  if (e.status === "done") {
+    if (e.kind === "dat") {
+      badges.push(`<span class="badge">検出結果 <b>${e.results.length}</b> 件</span>`);
+      badges.push(`<span class="badge">波形 <b>${e.wave && e.wave.ok ? e.wave.points.toLocaleString("ja-JP") : 0}</b> 点</span>`);
+      badges.push(`<span class="badge">文字列 <b>${e.tokenCount.toLocaleString("ja-JP")}</b> トークン</span>`);
+    } else {
+      badges.push(`<span class="badge">データ <b>${e.csv.rows.length.toLocaleString("ja-JP")}</b> 行</span>`);
+      badges.push(`<span class="badge">文字コード <b>${esc(e.csv.enc)}</b></span>`);
+    }
+    badges.push(`<span class="badge">CRC-32 <b class="mono">${hex8(e.crc)}</b></span>`);
+  }
+
+  const seg = `<div class="seg" role="group" aria-label="表示切替">
+      <button data-view="single" aria-pressed="${state.view === "single"}">単票</button>
+      <button data-view="summary" aria-pressed="${state.view === "summary"}">一覧 ${doneEntries().length} 件</button>
+    </div>`;
+
+  if (e.status !== "done") {
+    const body = e.status === "error"
+      ? `<div class="reason reason--err">${ICON.err}<div><b>変換できませんでした</b>${esc(e.error || "")}</div></div>`
+      : e.status === "running"
+        ? `<div class="reason">${ICON.busy}<div><b>変換中です</b>解析が終わるとここに結果が表示されます。</div></div>`
+        : `<div class="reason">${ICON.wait}<div><b>まだ変換していません</b>右上の主要ボタン「${esc(ctaState().label)}」を押すと、このファイルを含めてまとめて変換します。</div></div>`;
+    return `<div class="ws">
+      <div class="ws__head"><div class="ws__id"><div class="ws__name truncate">${esc(e.name)}</div>
+        <div class="ws__meta">${badges.join("")}</div></div>${seg}</div>
+      <div></div><div></div>
+      <div class="panel">${body}</div>
+    </div>`;
+  }
+
+  const { a, reasons } = tabAvailability(e);
+  if (!a[state.tab]) state.tab = "report" in a && a.report ? "report" : "analysis";
+
+  const tabsHtml = TABS.map((t) => {
+    const c = tabCount(e, t.key);
+    const label = c == null ? t.label : `${t.label} <span class="count">${c.toLocaleString("ja-JP")}</span>`;
+    return `<button class="tab" id="tab_${t.key}" role="tab" data-tab="${t.key}" tabindex="${state.tab === t.key ? 0 : -1}"
+      aria-selected="${state.tab === t.key}" ${a[t.key] ? "" : "disabled"}>${label}</button>`;
+  }).join("");
+
+  const v = e.analysis && e.analysis.verdict ? e.analysis.verdict : { level: "na", label: "解析なし", checks: [] };
+  const why = v.level === "na"
+    ? esc(e.analysisBlock || "解析に必要なデータが揃っていません")
+    : esc(v.checks.map((c) => `${c.label}: ${c.detail}`).join("　／　"));
+  const vIcon = { ok: ICON.ok, warn: ICON.warn, ng: ICON.err, na: ICON.na }[v.level];
+
+  return `<div class="ws">
+    <div class="ws__head">
+      <div class="ws__id">
+        <div class="ws__name truncate" title="${esc(e.name)}">${esc(e.name)}</div>
+        <div class="ws__meta">${badges.join("")}</div>
+      </div>${seg}
+    </div>
+    <div class="verdict verdict--${v.level}">
+      <span class="verdict__icon">${vIcon}</span>
+      <span class="verdict__label">判定: ${esc(v.label)}</span>
+      <span class="verdict__why truncate" title="${why}">${why}</span>
+    </div>
+    <div>
+      <div class="tabs" role="tablist">${tabsHtml}</div>
+      ${reasons.length ? `<p class="tabs__note">使えないタブの理由: ${esc(reasons.join("／"))}</p>` : ""}
+    </div>
+    <div class="panel${FIXED_TABS.has(state.tab) ? " panel--fixed" : ""}">${panelHtml(e)}</div>
+  </div>`;
+}
+
+/* ---- パネル ---- */
+function panelHtml(e) {
+  switch (state.tab) {
+    case "report": return reportPanel(e);
+    case "charts": return chartsPanel(e);
+    case "analysis": return analysisPanel(e);
+    case "results": return resultsPanel(e);
+    case "waveform": return waveformPanel(e);
+    case "audit": return auditPanel(e);
+    default: return "";
+  }
+}
+function dlChips(e) {
+  if (!e.outputs.length) return `<p class="muted">出力できる CSV がありません。</p>`;
+  return `<div class="chips">${e.outputs.map((o) => `
+    <button class="chip" data-act="dl" data-name="${esc(o.name)}">${ICON.dl}<span>${esc(o.name)}</span>
+      <span class="chip__size">${o.rows} 行 / ${fmtBytes(o.bytes.length)}</span></button>`).join("")}</div>`;
+}
+function reportPanel(e) {
+  const rep = e.report.map((r) => `<tr>
+      <td>${esc(r.item)}</td>
+      <td class="n">${r.value === "" ? '<span class="empty-val">(なし)</span>' : esc(r.value)}</td>
+      <td class="k">${esc(r.unit)}</td>
+      <td class="src">${r.source_label ? esc(r.source_label) : "—"}</td>
+    </tr>`).join("");
+  const mainKeys = ["ロット/製造番号", "厚さ", "幅", "直径", "平行部長さ", "試験片形状", "試験片名", "品名", "試験日", "速度", "ロードセル容量"];
+  const condRows = mainKeys.filter((k) => e.cond[k] != null).map((k) => {
+    const unit = DIM_KEYS.has(k) ? " mm" : "";
+    const filled = (e.condFilled || []).includes(k);
+    return `<tr><td class="k">${esc(k)}</td><td class="n">${esc(e.cond[k])}${unit}</td>
+      <td class="src">${filled ? "UTF-8 寸法セクションから補完" : "本体トークンから抽出"}</td></tr>`;
+  }).join("");
+  const nOther = Object.keys(e.cond).length - mainKeys.filter((k) => e.cond[k] != null).length;
+
+  return `<div class="cols cols--2">
+    <div>
+      <div class="card">
+        <div class="card__head"><span class="card__title">レポート項目</span>
+          <span class="badge">抽出方式 <b>${esc(e.conf)}</b></span></div>
+        <div class="card__body card__body--flush"><div class="table-wrap">
+          <table class="tbl"><thead><tr><th>項目</th><th class="n">値</th><th>単位</th><th>出どころ（元ラベル）</th></tr></thead>
+          <tbody>${rep}</tbody></table></div></div>
+        <p class="card__note">値は変換元ファイルに格納された算出済みの数値です。「(なし)」は該当ラベルが見つからなかったことを、「N/A」は元ファイルが未算出（"-.-"）で保持していることを表します。</p>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="card__head"><span class="card__title">主要な試験条件</span>
+          ${nOther > 0 ? `<span class="badge">ほかに <b>${nOther}</b> 件（conditions.csv に全件）</span>` : ""}</div>
+        <div class="card__body card__body--flush"><div class="table-wrap">
+          <table class="tbl"><tbody>${condRows || `<tr><td class="muted">条件を抽出できませんでした</td></tr>`}</tbody></table></div></div>
+      </div>
+      <div class="card">
+        <div class="card__head"><span class="card__title">このファイルの出力（分割ダウンロード）</span></div>
+        <div class="card__body">${dlChips(e)}</div>
+        <p class="card__note">すべてまとめて保存するときは、右上の主要ボタン（ZIP 一括ダウンロード）を使います。</p>
+      </div>
+      <div class="card">
+        <div class="card__head"><span class="card__title">読み取りの根拠</span></div>
+        <div class="card__body"><dl class="kv">
+          <dt>形式の判定</dt><dd>${esc(e.fmtBasis)}</dd>
+          <dt>文字列の文字コード</dt><dd>${e.fmt === "vtav" ? "UTF-8（1 バイト長 + 本体）" : "UTF-16LE（0x3E + 長さ + 本体）"}</dd>
+          <dt>結果値の確度</dt><dd>${esc(e.conf)}${e.fmt === "vtav" ? "（値をバイト位置で確定）" : "（名前→単位→値の順序構造）"}</dd>
+          <dt>入力の CRC-32</dt><dd class="mono">${hex8(e.crc)}</dd>
+          <dt>出力の文字コード</dt><dd>UTF-8（BOM 付き）・改行 CRLF・区切り カンマ</dd>
+        </dl></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function resultsPanel(e) {
+  const f = state.filter.trim();
+  const rows = e.results.filter((r) => !f || r.label.includes(f) || String(r.value).includes(f) || (r.param || "").includes(f));
+  return `<div class="card card--fill">
+    <div class="card__head">
+      <span class="card__title">結果サマリー全項目 <span class="unit">（${rows.length.toLocaleString("ja-JP")} / ${e.results.length.toLocaleString("ja-JP")} 件）</span></span>
+      <div class="card__tools">
+        <input class="input input--search" id="resFilter" type="search" placeholder="ラベル・値で絞り込む" value="${esc(state.filter)}">
+        <button class="chip" data-act="dl" data-name="${esc(e.base)}_results.csv">${ICON.dl}results.csv</button>
+      </div>
+    </div>
+    <div class="card__body card__body--flush"><div class="table-wrap">
+      <table class="tbl"><thead><tr><th>ラベル</th><th class="n">値</th><th>単位</th><th>パラメータ</th><th>確度</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr><td>${esc(r.label)}</td><td class="n">${esc(r.value)}</td>
+        <td class="k">${esc(r.unit)}</td><td class="src">${esc(r.param || "—")}</td><td class="src">${esc(e.conf)}</td></tr>`).join("")}
+      </tbody></table></div></div>
+  </div>`;
+}
+
+function waveformPanel(e) {
+  const w = e.wave;
+  const names = Object.keys(w.columns);
+  const limit = Math.min(w.points, 200);
+  const rows = [];
+  for (let i = 0; i < limit; i++) {
+    rows.push(`<tr><td class="n k">${i}</td>${names.map((n) => `<td class="n">${pyFloat(w.columns[n][i])}</td>`).join("")}</tr>`);
+  }
+  return `<div class="card card--fill">
+    <div class="card__head">
+      <span class="card__title">生波形 <span class="unit">（先頭 ${limit} 行を表示／全 ${w.points.toLocaleString("ja-JP")} 点）</span></span>
+      <div class="card__tools">
+        <span class="badge">レコード周期 <b>${w.stride}</b> バイト</span>
+        <span class="badge">採用列 <b>${names.length}</b> / 4</span>
+        <button class="chip" data-act="dl" data-name="${esc(e.base)}_waveform.csv">${ICON.dl}waveform.csv</button>
+      </div>
+    </div>
+    <div class="card__body card__body--flush"><div class="table-wrap">
+      <table class="tbl"><thead><tr><th class="n">#</th>${names.map((n) => `<th class="n">${esc(n)}</th>`).join("")}</tr></thead>
+      <tbody>${rows.join("")}</tbody></table></div></div>
+    <p class="card__note">マーカー 01 00 00 00 00 01 01 の等間隔出現から ${w.points.toLocaleString("ja-JP")} レコードを復元し、
+      各マーカー位置からのオフセット（Time_sec −8 / Stroke_mm −4 / Force_N +29 / Extensometer_mm +37）を float32(LE) として読み出しています。
+      数値は小数 6 桁に丸めて出力します。${w.dropped && w.dropped.length ? `　不採用列: ${esc(w.dropped.join(", "))}（範囲外または NaN を含む）` : ""}</p>
+  </div>`;
+}
+
+function auditPanel(e) {
+  return `<div class="card card--fill">
+    <div class="card__head"><span class="card__title">変更履歴 <span class="unit">（${e.audit.length} 件）</span></span>
+      <div class="card__tools">
+        ${state.params.auditOut ? `<button class="chip" data-act="dl" data-name="${esc(e.base)}_audit.csv">${ICON.dl}audit.csv</button>`
+          : `<span class="badge">${statusChip("na", "CSV 出力は設定でオフ")}</span>`}
+      </div></div>
+    <div class="card__body card__body--flush"><div class="table-wrap">
+      <table class="tbl"><thead><tr><th>項目</th><th>変更内容</th><th>日時</th><th>ユーザ</th></tr></thead>
+      <tbody>${e.audit.map((r) => `<tr><td>${esc(r.item)}</td><td>${esc(r.change)}</td>
+        <td class="n">${esc(r.datetime)}</td><td>${esc(r.user)}</td></tr>`).join("")}</tbody></table></div></div>
+  </div>`;
+}
+
+/* ---- 解析パネル ---- */
+function statBlock(label, value, unit, basis, hero) {
+  const na = value == null;
+  return `<div class="stat${hero ? " stat--hero" : ""}">
+    <div class="stat__label">${esc(label)}</div>
+    <div class="stat__value${na ? " is-na" : ""}">${na ? "算出不可" : esc(value)}${na ? "" : `<span class="unit">${esc(unit)}</span>`}</div>
+    <div class="stat__basis">${esc(basis)}</div>
+  </div>`;
+}
+function analysisPanel(e) {
+  const A = e.analysis;
+  const areaCard = areaCardHtml(e);
+  if (!A) {
+    return `<div class="cols cols--2"><div>
+      <div class="reason reason--warn">${ICON.warn}<div><b>解析できません</b>${esc(e.analysisBlock || "必要なデータが揃っていません")}</div></div>
+    </div><div>${areaCard}</div></div>`;
+  }
+  const stats = [
+    statBlock("引張強さ Rm", A.rm ? fmtNum(A.rm.value, 1) : null, "N/mm²", A.rm ? A.rm.basis : "応力が確定していません", true),
+    statBlock("耐力（速度法）", A.yieldV && fin(A.yieldV.stress) ? fmtNum(A.yieldV.stress, 1) : null, "N/mm²",
+      A.yieldV ? A.yieldV.basis : (A.blocked.find((b) => b.what === "耐力（速度法）") || {}).why || "算出不可", true),
+    statBlock("0.2% 耐力", A.offset02 ? fmtNum(A.offset02.stress, 1) : null, "N/mm²",
+      A.offset02 ? A.offset02.basis : (A.blocked.find((b) => b.what.startsWith("弾性勾配")) || {}).why || "算出不可", true),
+    statBlock("伸び（破断ひずみ）", A.elongation ? fmtNum(A.elongation.value, 2) : null, "%",
+      A.elongation ? `${A.elongation.method}／${A.elongation.basis}` : (A.blocked.find((b) => b.what.startsWith("伸び")) || {}).why || "算出不可", true),
+    statBlock("応力増加速度", A.rampRate ? fmtNum(A.rampRate.value, 2) : null, "MPa/s",
+      A.rampRate ? A.rampRate.basis : (A.blocked.find((b) => b.what === "応力増加速度") || {}).why || "算出不可"),
+    statBlock("ヤング率 E", A.youngs ? fmtNum(A.youngs.nmm2, 0) : null, "N/mm²",
+      A.youngs ? `弾性勾配 × 100（= ${fmtNum(A.youngs.gpa, 1)} GPa）` : "直線域が決まらないため算出不可"),
+    statBlock("ひずみ速度①（弾性）", A.strainRate1 ? fmtExp(A.strainRate1.value, 2) : null, "s⁻¹",
+      A.strainRate1 ? A.strainRate1.basis : "直線域または時間データがありません"),
+    statBlock("ひずみ速度②（塑性）", A.strainRate2 ? fmtExp(A.strainRate2.value, 2) : null, "s⁻¹",
+      A.strainRate2 ? A.strainRate2.basis : "耐力点〜破断点の区間が決まりません"),
+  ].join("");
+
+  const checks = A.verdict.checks.map((c) => `<div class="check">
+      ${statusChip(c.level === "ng" ? "err" : c.level, { ok: "合格", warn: "要確認", ng: "不合格", na: "未評価" }[c.level])}
+      <div class="check__body"><b>${esc(c.label)}</b><span class="muted">${esc(c.detail)}</span></div>
+    </div>`).join("");
+
+  const blocked = A.blocked.length
+    ? A.blocked.map((b) => `<div class="check">${statusChip("na", "算出不可")}
+        <div class="check__body"><b>${esc(b.what)}</b><span class="muted">${esc(b.why)}</span></div></div>`).join("")
+    : `<p class="muted">すべての量を算出できました。</p>`;
+
+  return `<div class="cols cols--2">
+    <div>
+      <div class="card">
+        <div class="card__head"><span class="card__title">主要な機械的特性</span>
+          <div class="card__tools">${A.ok ? `<button class="chip" data-act="dl" data-name="${esc(e.base)}_analysis.csv">${ICON.dl}analysis.csv</button>` : ""}</div>
+        </div>
+        <div class="card__body"><div class="stats">${stats}</div></div>
+        <p class="card__note">応力の取得: ${esc(A.basis.stress || "未確定")}${A.basis.strain ? `　／　ひずみ: ${esc(A.basis.strain)}` : ""}${A.basis.velocity ? `　／　速度: ${esc(A.basis.velocity)}` : ""}</p>
+      </div>
+      <div class="card">
+        <div class="card__head"><span class="card__title">判定の内訳</span></div>
+        <div class="card__body"><div class="checks">${checks}</div></div>
+      </div>
+    </div>
+    <div>
+      ${areaCard}
+      <div class="card">
+        <div class="card__head"><span class="card__title">直線域（弾性勾配）の決定</span></div>
+        <div class="card__body">${A.linear ? `<dl class="kv">
+            <dt>使用区間</dt><dd>第 ${A.linear.startIdx + 1}〜${A.linear.cutoffIdx + 1} 点（${A.linear.nPoints} 点）</dd>
+            <dt>ひずみ範囲</dt><dd>${fmtNum(A.linear.strainFrom, 3)} 〜 ${fmtNum(A.linear.strainTo, 3)} %</dd>
+            <dt>勾配</dt><dd>${fmtNum(A.linear.slope, 2)} N/mm² per ε%</dd>
+            <dt>直線性 R²</dt><dd>${A.linear.r2.toFixed(5)}</dd>
+            <dt>根拠</dt><dd>${esc(A.linear.basis)}</dd>
+          </dl>${A.linear.fallback ? `<div class="reason reason--warn" style="margin-top:var(--sp-3)">${ICON.warn}<div><b>代替基準を使用しています</b>耐力（速度法）が算出できないため、直線域の基準を Rm から推定しました。0.2% 耐力・ヤング率は参考値として扱ってください。</div></div>` : ""}`
+          : `<p class="muted">直線域を決定できませんでした。</p>`}</div>
+      </div>
+      <div class="card">
+        <div class="card__head"><span class="card__title">算出できなかった量とその理由</span></div>
+        <div class="card__body"><div class="checks">${blocked}</div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function areaCardHtml(e) {
+  if (e.kind === "csv") {
+    const cols = e.csv && e.csv.ok ? e.csv : null;
+    const opts = (role, sel) => `<select class="select" data-act="csvmap" data-role="${role}" id="map_${role}">
+        <option value="-1">（割り当てなし）</option>
+        ${(cols ? cols.headers : []).map((h, i) => `<option value="${i}" ${i === sel ? "selected" : ""}>${esc(h || `列${i + 1}`)}</option>`).join("")}
+      </select>`;
+    return `<div class="card">
+      <div class="card__head"><span class="card__title">CSV の列マッピング</span>
+        <span class="badge">文字コード <b>${esc(e.csv ? e.csv.enc : "?")}</b></span></div>
+      <div class="card__body">
+        <div class="fields">
+          ${CSV_ROLES.map((r) => `<div class="field"><span class="field__label">${esc(r.label)}（${esc(r.unit)}）</span>${opts(r.role, e.csv.map[r.role] ?? -1)}</div>`).join("")}
+        </div>
+        <p class="field__hint" style="margin-top:var(--sp-2)">ヘッダ行は ${e.csv.headerRow + 1} 行目と判定しました。応力列がある場合は換算せずそのまま使用します（§11.2 A）。</p>
+      </div>
+    </div>`;
+  }
+  const o = e.areaOverride;
+  const auto = resolveArea({ ...e, areaOverride: { mode: "auto" } });
+  const cur = resolveArea(e);
+  const modes = [["auto", "試験条件から自動"], ["plate", "平板（厚さ×幅）を入力"], ["round", "丸棒（直径）を入力"], ["direct", "断面積 A を直接入力"]];
+  return `<div class="card">
+    <div class="card__head"><span class="card__title">断面積 A とゲージ長</span>
+      <span class="badge">A = <b>${cur.area ? fmtNum(cur.area, 3) : "未確定"}</b> mm²</span></div>
+    <div class="card__body">
+      <div class="fields">
+        <div class="field"><span class="field__label">断面積の決め方</span>
+          <select class="select" id="areaMode" data-act="areamode">
+            ${modes.map(([v, l]) => `<option value="${v}" ${o.mode === v ? "selected" : ""}>${l}</option>`).join("")}
+          </select></div>
+        ${o.mode === "plate" ? `
+          <div class="field"><span class="field__label">厚さ（mm）</span><input class="input" id="areaT" type="number" step="0.001" min="0" value="${o.t ?? ""}" data-act="areanum" data-k="t"></div>
+          <div class="field"><span class="field__label">幅（mm）</span><input class="input" id="areaW" type="number" step="0.001" min="0" value="${o.w ?? ""}" data-act="areanum" data-k="w"></div>` : ""}
+        ${o.mode === "round" ? `
+          <div class="field"><span class="field__label">直径（mm）</span><input class="input" id="areaD" type="number" step="0.001" min="0" value="${o.d ?? ""}" data-act="areanum" data-k="d"></div>` : ""}
+        ${o.mode === "direct" ? `
+          <div class="field"><span class="field__label">断面積 A（mm²）</span><input class="input" id="areaA" type="number" step="0.001" min="0" value="${o.A ?? ""}" data-act="areanum" data-k="A"></div>` : ""}
+        <div class="field"><span class="field__label">ゲージ長（mm・全ファイル共通）</span>
+          <input class="input" id="gauge" type="number" step="0.1" min="0.1" value="${state.params.gaugeLength}" data-act="gauge"></div>
+      </div>
+      <p class="field__hint" style="margin-top:var(--sp-2)">
+        ${cur.area ? `現在の根拠: ${esc(cur.basis)}` : "断面積が決まらないため応力を復元できません。上で寸法または A を入力してください。"}
+        ${auto.area ? `　／　試験条件からの自動値: ${fmtNum(auto.area, 3)} mm²` : "　／　試験条件に寸法がありません"}
+      </p>
+    </div>
+    <p class="card__note">DAT 入力の全点 SS 曲線は σ = 試験力 ÷ A で復元します（元ファイル内蔵のサマリー応力と一致する定義）。</p>
+  </div>`;
+}
+
+/* ---- 線図パネル ---- */
+function chartsPanel(e) {
+  const A = e.analysis;
+  if (!A || !A.series.stress) {
+    return `<div class="reason reason--warn" style="align-self:start">${ICON.warn}<div><b>線図を描けません</b>${esc(e.analysisBlock || "応力が確定していないため作図できません。解析タブで断面積を入力してください。")}</div></div>`;
+  }
+  const axisOpts = (sel) => Object.entries(AXES).map(([k, v]) =>
+    `<option value="${k}" ${k === sel ? "selected" : ""} ${A.series[k] ? "" : "disabled"}>${esc(v.label)}</option>`).join("");
+  const isSS = state.chart.x === "strain" && state.chart.y === "stress";
+  return `<div class="charts">
+    <div class="card">
+      <div class="card__head">
+        <span class="card__title">作図の設定</span>
+        <div class="card__tools">
+          <span class="field__label">X 軸</span>
+          <select class="select select--axis" id="axX" data-act="axis" data-k="x">${axisOpts(state.chart.x)}</select>
+          <span class="field__label">Y 軸</span>
+          <select class="select select--axis" id="axY" data-act="axis" data-k="y">${axisOpts(state.chart.y)}</select>
+          <label class="check-line"><input type="checkbox" data-act="cmark" ${state.chart.markers ? "checked" : ""}>マーカー</label>
+          <label class="check-line"><input type="checkbox" data-act="cfit" ${state.chart.fit ? "checked" : ""}>回帰直線・0.2% 線</label>
+        </div>
+      </div>
+      ${!isSS ? `<p class="card__note">注釈（耐力点▽・破断点×・0.2%耐力★・回帰直線）は ひずみ-応力線図（X=ひずみ / Y=応力）のときに重ねます。</p>` : ""}
+    </div>
+    <div class="charts__row">
+      <div class="card chartcard">
+        <div class="card__head"><span class="card__title" id="c1title">${esc(AXES[state.chart.x].label)} － ${esc(AXES[state.chart.y].label)}</span>
+          <div class="card__tools"><button class="chip btn--sm" data-act="png" data-c="0">${ICON.dl}PNG 保存</button></div></div>
+        <div class="chart-host" id="chart1"></div>
+        <div class="legend" id="legend1"></div>
+      </div>
+      <div class="card chartcard">
+        <div class="card__head"><span class="card__title">時間 － 応力線図</span>
+          <div class="card__tools"><button class="chip btn--sm" data-act="png" data-c="1">${ICON.dl}PNG 保存</button></div></div>
+        <div class="chart-host" id="chart2"></div>
+        <div class="legend" id="legend2"></div>
+      </div>
+    </div>
+  </div>`;
+}
+function seriesFor(A, xKey, yKey) {
+  const sx = A.series[xKey], sy = A.series[yKey];
+  if (!sx || !sy) return null;
+  const n = Math.min(sx.length, sy.length);
+  const xs = new Float64Array(n), ys = new Float64Array(n);
+  let m = 0;
+  for (let i = 0; i < n; i++) {
+    const x = sx[i], y = sy[i];
+    if (!fin(x) || !fin(y)) continue;
+    xs[m] = x; ys[m] = y; m++;
+  }
+  return { xs: xs.subarray(0, m), ys: ys.subarray(0, m) };
+}
+const legendItem = (glyph, varName, label, detail) => `<span class="legend-item">
+  <svg viewBox="0 0 22 12" style="color:var(${varName})" aria-hidden="true">${glyph}</svg>
+  <span><b>${esc(label)}</b>${detail ? ` ${esc(detail)}` : ""}</span></span>`;
+const GLYPH = {
+  line: '<path d="M1 6h20" stroke="currentColor" stroke-width="2.2" fill="none"/>',
+  dash: '<path d="M1 6h20" stroke="currentColor" stroke-width="2.2" stroke-dasharray="4 3" fill="none"/>',
+  tri:  '<path d="M5 3h12l-6 7z" fill="none" stroke="currentColor" stroke-width="2"/>',
+  x:    '<path d="M6 2l10 8M16 2 6 10" stroke="currentColor" stroke-width="2"/>',
+  star: '<path d="m11 1 2.2 4.5 4.8.7-3.5 3.4.8 4.8L11 12l-4.3 2.4.8-4.8L4 6.2l4.8-.7z" fill="currentColor" transform="scale(.8) translate(2.5,0)"/>',
+  band: '<rect x="1" y="1" width="20" height="10" fill="currentColor" opacity=".35"/>',
+};
+function mountCharts(e) {
+  const A = e.analysis;
+  if (!A || !A.series.stress) return;
+  const host1 = $("#chart1"), host2 = $("#chart2");
+  if (!host1 || !host2) return;
+
+  /* --- 線図 1（軸は選択可能。SS 線図のときだけ注釈を重ねる） --- */
+  const xk = state.chart.x, yk = state.chart.y;
+  const base = seriesFor(A, xk, yk);
+  const spec1 = {
+    xLabel: AXES[xk].label, yLabel: AXES[yk].label,
+    xUnit: AXES[xk].unit, yUnit: AXES[yk].unit,
+    xShort: AXES[xk].short, yShort: AXES[yk].short,
+    series: [], markers: [], bands: [],
+  };
+  const legend1 = [];
+  if (base && base.xs.length) {
+    spec1.series.push({ ...base, color: cssVar("--chart-line"), width: 1.8, primary: true });
+    legend1.push(legendItem(GLYPH.line, "--chart-line", "測定データ", `${base.xs.length.toLocaleString("ja-JP")} 点`));
+  }
+  const isSS = xk === "strain" && yk === "stress";
+  if (isSS && A.linear && state.chart.fit) {
+    const { slope, intercept, strainFrom, strainTo } = A.linear;
+    let xEnd = strainTo;
+    if (A.offset02) xEnd = Math.max(xEnd, A.offset02.strain * 1.08);
+    if (A.yieldV && fin(A.yieldV.strain)) xEnd = Math.max(xEnd, A.yieldV.strain * 1.05);
+    spec1.series.push({ xs: Float64Array.from([strainFrom, strainTo]), ys: Float64Array.from([slope * strainFrom + intercept, slope * strainTo + intercept]),
+      color: cssVar("--chart-fit"), width: 2, scale: false });
+    spec1.series.push({ xs: Float64Array.from([strainTo, xEnd]), ys: Float64Array.from([slope * strainTo + intercept, slope * xEnd + intercept]),
+      color: cssVar("--chart-fit"), width: 1.6, dash: [5, 4], scale: false });
+    const ox0 = 0.2, ox1 = Math.max(0.2, xEnd + 0.2);
+    spec1.series.push({ xs: Float64Array.from([ox0, ox1]), ys: Float64Array.from([0, slope * (ox1 - 0.2)]),
+      color: cssVar("--chart-offset"), width: 1.6, dash: [5, 4], scale: false });
+    spec1.bands.push({ from: strainFrom, to: strainTo });
+    legend1.push(legendItem(GLYPH.band, "--chart-line", "直線域", `ε ${fmtNum(strainFrom, 3)}〜${fmtNum(strainTo, 3)} %`));
+    legend1.push(legendItem(GLYPH.line, "--chart-fit", "回帰直線（弾性勾配）", `R² ${A.linear.r2.toFixed(4)}／破線は外挿`));
+    legend1.push(legendItem(GLYPH.dash, "--chart-offset", "0.2% オフセット線", `σ = ${fmtNum(slope, 1)} × (ε − 0.2)`));
+  }
+  if (isSS && state.chart.markers) {
+    if (A.yieldV && fin(A.yieldV.strain) && fin(A.yieldV.stress)) {
+      spec1.markers.push({ x: A.yieldV.strain, y: A.yieldV.stress, shape: "triangle-down", color: cssVar("--chart-yield"), label: "耐力", below: true });
+      legend1.push(legendItem(GLYPH.tri, "--chart-yield", "耐力点（速度法）", `${fmtNum(A.yieldV.stress, 1)} N/mm²`));
+    }
+    if (A.offset02) {
+      spec1.markers.push({ x: A.offset02.strain, y: A.offset02.stress, shape: "star", color: cssVar("--chart-offset"), label: "0.2%" });
+      legend1.push(legendItem(GLYPH.star, "--chart-offset", "0.2% 耐力", `${fmtNum(A.offset02.stress, 1)} N/mm²`));
+    }
+    const fr = A.fractureA || A.fractureB;
+    if (fr && fin(fr.strain) && fin(fr.stress)) {
+      spec1.markers.push({ x: fr.strain, y: fr.stress, shape: "x", color: cssVar("--chart-fracture"), label: "破断" });
+      legend1.push(legendItem(GLYPH.x, "--chart-fracture", "破断点", `伸び ${fmtNum(fr.strain, 2)} %`));
+    }
+    if (A.rm && fin(A.rm.strain)) {
+      spec1.markers.push({ x: A.rm.strain, y: A.rm.value, shape: "circle", color: cssVar("--chart-line-2"), label: "Rm" });
+      legend1.push(legendItem(GLYPH.line, "--chart-line-2", "引張強さ Rm", `${fmtNum(A.rm.value, 1)} N/mm²`));
+    }
+  }
+  const c1 = new LineChart(host1);
+  c1.setData(spec1);
+  charts.push(c1);
+  $("#legend1").innerHTML = legend1.join("");
+
+  /* --- 線図 2（時間-応力） --- */
+  const ts = A.series.time ? seriesFor(A, "time", "stress") : null;
+  const c2 = new LineChart(host2);
+  if (ts && ts.xs.length) {
+    c2.setData({
+      xLabel: AXES.time.label, yLabel: AXES.stress.label,
+      xUnit: AXES.time.unit, yUnit: AXES.stress.unit, xShort: AXES.time.short, yShort: AXES.stress.short,
+      series: [{ ...ts, color: cssVar("--chart-line"), width: 1.8, primary: true }],
+      markers: [], bands: [],
+    });
+    $("#legend2").innerHTML = legendItem(GLYPH.line, "--chart-line", "時間-応力", `${ts.xs.length.toLocaleString("ja-JP")} 点`) +
+      (A.rampRate ? legendItem(GLYPH.dash, "--chart-fit", "応力増加速度", `${fmtNum(A.rampRate.value, 2)} MPa/s（直線域の傾き）`) : "");
+  } else {
+    c2.setData({ xLabel: AXES.time.label, yLabel: AXES.stress.label, xUnit: "sec", yUnit: "N/mm²", xShort: "t", yShort: "σ", series: [], markers: [], bands: [] });
+    $("#legend2").innerHTML = `<span class="legend-item">${statusChip("na", "時間データなし")} 時間列が無いため作図できません</span>`;
+  }
+  charts.push(c2);
+}
+
+/* ---- 一覧（§16.2） ---- */
+function summaryHtml() {
+  const rows = summaryRows();
+  const { key, dir } = state.sort;
+  const col = SUMMARY_COLS.find((c) => c.key === key) || SUMMARY_COLS[1];
+  rows.sort((a, b) => {
+    const va = a[key], vb = b[key];
+    if (col.num) {
+      const fa = fin(va) ? va : -Infinity, fb = fin(vb) ? vb : -Infinity;
+      return (fa - fb) * dir;
+    }
+    return String(va).localeCompare(String(vb), "ja") * dir;
+  });
+  const head = SUMMARY_COLS.map((c) => `<th class="sortable ${c.num ? "n" : ""}" data-sort="${c.key}"
+      ${key === c.key ? `aria-sort="${dir > 0 ? "ascending" : "descending"}"` : ""}>${esc(c.label)}${c.unit ? `<br><span class="muted">${esc(c.unit)}</span>` : ""}
+      <span class="arrow">${key === c.key ? (dir > 0 ? "▲" : "▼") : "↕"}</span></th>`).join("");
+  const body = rows.map((r) => `<tr class="rowlink" data-open="${r.id}">
+      ${SUMMARY_COLS.map((c) => {
+        if (c.key === "verdict") {
+          const kind = r.level === "ng" ? "err" : r.level === "ok" ? "ok" : r.level === "warn" ? "warn" : "na";
+          return `<td>${statusChip(kind, r.verdict)}</td>`;
+        }
+        const v = r[c.key];
+        if (!c.num) return `<td class="${c.key === "name" ? "" : "k"}">${esc(v || "—")}</td>`;
+        return `<td class="n">${fin(v) ? (c.exp ? fmtExp(v, 2) : fmtNum(v, c.d)) : '<span class="empty-val">—</span>'}</td>`;
+      }).join("")}
+    </tr>`).join("");
+
+  return `<div class="ws">
+    <div class="ws__head">
+      <div class="ws__id">
+        <div class="ws__name">解析結果 一覧</div>
+        <div class="ws__meta"><span class="badge">変換済 <b>${rows.length}</b> 件</span>
+          <span class="badge">列見出しをクリックで並べ替え／行をクリックで単票へ</span></div>
+      </div>
+      <div class="seg" role="group" aria-label="表示切替">
+        <button data-view="single" aria-pressed="false">単票</button>
+        <button data-view="summary" aria-pressed="true">一覧 ${rows.length} 件</button>
+      </div>
+    </div>
+    <div></div><div></div>
+    <div class="panel panel--fixed">
+      <div class="card card--fill">
+        <div class="card__head"><span class="card__title">集計表</span>
+          <div class="card__tools">
+            <button class="chip" data-act="dl-summary">${ICON.dl}summary.csv を保存</button>
+          </div></div>
+        <div class="card__body card__body--flush"><div class="table-wrap">
+          <table class="tbl"><thead><tr>${head}</tr></thead><tbody>${body || `<tr><td class="muted">変換済みのファイルがありません</td></tr>`}</tbody></table>
+        </div></div>
+        <p class="card__note">単位は列見出しに表記。空欄（—）は算出できなかった項目です（理由は各ファイルの解析タブに表示します）。ZIP 一括ダウンロードにもこの summary.csv を含めます。</p>
+      </div>
+    </div>
+  </div>`;
+}
+/* ============================================================================
+ * 27. 設定ダイアログ
+ * ==========================================================================*/
+const dlg = $("#dlgSettings");
+function buildSettings() {
+  const groups = new Map();
+  for (const m of PARAM_META) {
+    if (!groups.has(m.group)) groups.set(m.group, []);
+    groups.get(m.group).push(m);
+  }
+  const groupHtml = [...groups].map(([g, items]) => `<div class="card">
+      <div class="card__head"><span class="card__title">${esc(g)}</span></div>
+      <div class="card__body"><div class="fields">
+        ${items.map((m) => `<div class="field">
+            <span class="field__label">${esc(m.label)}<span class="muted">（${esc(m.unit)}）</span></span>
+            <input class="input" type="number" data-param="${m.key}" step="${m.step}"
+              ${m.min != null ? `min="${m.min}"` : ""} ${m.max != null ? `max="${m.max}"` : ""}
+              value="${state.params[m.key]}">
+          </div>`).join("")}
+      </div></div>
+    </div>`).join("");
+
+  $("#dlgBody").innerHTML = `
+    <div class="card">
+      <div class="card__head"><span class="card__title">出力と平滑化</span></div>
+      <div class="card__body"><div class="fields">
+        <label class="check-line"><input type="checkbox" data-param="auditOut" ${state.params.auditOut ? "checked" : ""}>変更履歴（audit）も CSV 出力する（.vtav のみ）</label>
+        <label class="check-line"><input type="checkbox" data-param="smoothing" ${state.params.smoothing ? "checked" : ""}>速度を移動平均で平滑化する</label>
+        <label class="check-line"><input type="checkbox" data-param="rampCheck" ${state.params.rampCheck ? "checked" : ""}>応力増加速度を許容範囲で判定する</label>
+      </div></div>
+      <p class="card__note">audit をオフにすると audit.csv は生成されません（ZIP・分割 DL の一覧からも消えます）。</p>
+    </div>
+    ${groupHtml}
+    <div class="card">
+      <div class="card__head"><span class="card__title">この設定の扱い</span></div>
+      <div class="card__body"><p class="muted">値はこのブラウザ内（localStorage）にのみ保存され、外部へは送信されません。
+        JSON での書き出し／読み込みは右上「⋯」メニューから行えます。</p></div>
+    </div>`;
+}
+function syncSettingsInputs() {
+  $$("[data-param]", dlg).forEach((el) => {
+    const k = el.dataset.param;
+    if (el.type === "checkbox") el.checked = !!state.params[k];
+    else el.value = state.params[k];
+  });
+}
+dlg.addEventListener("change", (ev) => {
+  const el = ev.target.closest("[data-param]");
+  if (!el) return;
+  const k = el.dataset.param;
+  if (el.type === "checkbox") state.params[k] = el.checked;
+  else {
+    const v = parseFloat(el.value);
+    if (!isFinite(v)) { el.value = state.params[k]; return; }
+    state.params[k] = v;
+  }
+  saveParams();
+  reanalyzeAll();
+  scheduleRender(true);
+});
+$("#btnResetParams").addEventListener("click", () => {
+  const before = { ...state.params };
+  state.params = { ...DEFAULT_PARAMS };
+  saveParams();
+  syncSettingsInputs();
+  reanalyzeAll();
+  renderAll();
+  toast("解析パラメータを既定値に戻しました", "取り消し", () => {
+    state.params = before;
+    saveParams();
+    syncSettingsInputs();
+    reanalyzeAll();
+    renderAll();
+  });
+});
+
+/* ============================================================================
+ * 28. トースト（危ない操作は確認ではなく「取り消し」を用意する）
+ * ==========================================================================*/
+function toast(message, actionLabel, action) {
+  const host = $("#toasts");
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.innerHTML = `<span>${esc(message)}</span>`;
+  if (actionLabel) {
+    const b = document.createElement("button");
+    b.textContent = actionLabel;
+    b.addEventListener("click", () => { action(); el.remove(); });
+    el.append(b);
+  }
+  host.append(el);
+  setTimeout(() => el.remove(), actionLabel ? 9000 : 4000);
+}
+
+/* ============================================================================
+ * 29. イベント
+ * ==========================================================================*/
+const picker = $("#filePicker");
+picker.addEventListener("change", () => { addFiles(picker.files); picker.value = ""; });
+$("#dzMini").addEventListener("click", () => picker.click());
+$("#dzMini").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); picker.click(); } });
+
+elCta.addEventListener("click", () => {
+  const act = elCta.dataset.act;
+  if (act === "convert") runConversion();
+  else if (act === "zip") downloadZip();
+});
+
+elRail.addEventListener("click", (ev) => {
+  const b = ev.target.closest(".fileitem");
+  if (!b) return;
+  state.selectedId = Number(b.dataset.id);
+  state.view = "single";
+  renderAll();
+});
+
+/* ---- ステージ内のクリック ---- */
+elStage.addEventListener("click", (ev) => {
+  const hero = ev.target.closest("#dzHero");
+  if (hero) { picker.click(); return; }
+  const t = ev.target.closest("[data-act],[data-tab],[data-view],[data-sort],[data-open]");
+  if (!t) return;
+  const e = selected();
+
+  if (t.dataset.view) { state.view = t.dataset.view; scheduleRender(false); return; }
+  if (t.dataset.tab) { state.tab = t.dataset.tab; state.filter = ""; scheduleRender(false); return; }
+  if (t.dataset.open) {
+    state.selectedId = Number(t.dataset.open);
+    state.view = "single";
+    state.tab = "analysis";
+    renderAll();
+    return;
+  }
+  if (t.dataset.sort) {
+    const k = t.dataset.sort;
+    state.sort = state.sort.key === k ? { key: k, dir: -state.sort.dir } : { key: k, dir: 1 };
+    scheduleRender(false);
+    return;
+  }
+  switch (t.dataset.act) {
+    case "dl":
+      if (e) downloadOutput(e, t.dataset.name);
+      break;
+    case "dl-summary":
+      downloadBytes(csvBytes(summaryCsvText()), `summary_${nowStamp()}.csv`, "text/csv");
+      break;
+    case "png": {
+      const c = charts[Number(t.dataset.c)];
+      if (!c) break;
+      c.canvas.toBlob((blob) => {
+        if (!blob) return;
+        blob.arrayBuffer().then((ab) => {
+          const suffix = Number(t.dataset.c) === 0 ? "ss" : "time_stress";
+          downloadBytes(new Uint8Array(ab), `${e ? e.base : "chart"}_${suffix}.png`, "image/png");
+        });
+      });
+      break;
+    }
+  }
+});
+
+/* ---- ステージ内の入力変更 ---- */
+elStage.addEventListener("change", (ev) => {
+  const t = ev.target.closest("[data-act]");
+  if (!t) return;
+  const e = selected();
+  switch (t.dataset.act) {
+    case "areamode": {
+      if (!e) return;
+      e.areaOverride.mode = t.value;
+      if (t.value === "plate") {
+        if (e.areaOverride.t == null) e.areaOverride.t = fin(condNum(e.cond, "厚さ")) ? condNum(e.cond, "厚さ") : null;
+        if (e.areaOverride.w == null) e.areaOverride.w = fin(condNum(e.cond, "幅")) ? condNum(e.cond, "幅") : null;
+      }
+      if (t.value === "round" && e.areaOverride.d == null) {
+        e.areaOverride.d = fin(condNum(e.cond, "直径")) ? condNum(e.cond, "直径") : null;
+      }
+      runAnalysis(e); buildOutputs(e); scheduleRender(true);
+      break;
+    }
+    case "areanum": {
+      if (!e) return;
+      const v = parseFloat(t.value);
+      e.areaOverride[t.dataset.k] = isFinite(v) ? v : null;
+      runAnalysis(e); buildOutputs(e); scheduleRender(true);
+      break;
+    }
+    case "gauge": {
+      const v = parseFloat(t.value);
+      if (!isFinite(v) || v <= 0) return;
+      state.params.gaugeLength = v;
+      saveParams(); syncSettingsInputs(); reanalyzeAll(); scheduleRender(true);
+      break;
+    }
+    case "csvmap": {
+      if (!e || !e.csv) return;
+      e.csv.map[t.dataset.role] = Number(t.value) < 0 ? null : Number(t.value);
+      runAnalysis(e); buildOutputs(e); scheduleRender(true);
+      break;
+    }
+    case "axis": state.chart[t.dataset.k] = t.value; scheduleRender(false); break;
+    case "cmark": state.chart.markers = t.checked; scheduleRender(false); break;
+    case "cfit": state.chart.fit = t.checked; scheduleRender(false); break;
+  }
+});
+elStage.addEventListener("input", (ev) => {
+  if (ev.target.id === "resFilter") { state.filter = ev.target.value; scheduleRender(false); }
+});
+/* タブの矢印キー移動 */
+elStage.addEventListener("keydown", (ev) => {
+  const tab = ev.target.closest('[role="tab"]');
+  if (!tab || !["ArrowLeft", "ArrowRight"].includes(ev.key)) return;
+  const tabs = $$('[role="tab"]:not(:disabled)', elStage);
+  const i = tabs.indexOf(tab);
+  const next = tabs[(i + (ev.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+  /* 先にフォーカスを移してからクリックする。描画は次フレームなので、
+     renderStage() が同じ id へフォーカスを戻せる。 */
+  if (next) { next.focus(); next.click(); }
+  ev.preventDefault();
+});
+
+/* ---- オーバーフローメニュー ---- */
+const menu = $("#moreMenu"), btnMore = $("#btnMore");
+btnMore.addEventListener("click", () => {
+  const open = menu.hidden;
+  menu.hidden = !open;
+  btnMore.setAttribute("aria-expanded", String(open));
+});
+document.addEventListener("click", (ev) => {
+  if (!menu.hidden && !menu.contains(ev.target) && !btnMore.contains(ev.target)) {
+    menu.hidden = true;
+    btnMore.setAttribute("aria-expanded", "false");
+  }
+});
+menu.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-act]");
+  if (!b) return;
+  menu.hidden = true;
+  btnMore.setAttribute("aria-expanded", "false");
+  switch (b.dataset.act) {
+    case "export-settings":
+      downloadBytes(new TextEncoder().encode(JSON.stringify(state.params, null, 2)),
+        `trapezium_params_${nowStamp()}.json`, "application/json");
+      break;
+    case "import-settings":
+      $("#settingsPicker").click();
+      break;
+    case "clear-results": {
+      const snapshot = state.entries.map((x) => ({ ...x }));
+      let n = 0;
+      for (const x of state.entries) {
+        if (x.status !== "done") continue;
+        n++;
+        x.status = "queued"; x.outputs = []; x.analysis = null; x.analysisBlock = null; x._waveCsv = null;
+      }
+      renderAll();
+      toast(`${n} 件の変換結果を消しました（入力ファイルは残っています）`, "取り消し", () => {
+        state.entries = snapshot;
+        renderAll();
+      });
+      break;
+    }
+    case "clear-all": {
+      const snapshot = state.entries.slice();
+      const sel = state.selectedId;
+      const n = snapshot.length;
+      state.entries = [];
+      state.selectedId = null;
+      state.view = "single";
+      renderAll();
+      toast(`${n} 件をすべて削除しました`, "取り消し", () => {
+        state.entries = snapshot;
+        state.selectedId = sel;
+        renderAll();
+      });
+      break;
+    }
+  }
+});
+$("#settingsPicker").addEventListener("change", async (ev) => {
+  const f = ev.target.files && ev.target.files[0];
+  ev.target.value = "";
+  if (!f) return;
+  try {
+    const obj = JSON.parse(await f.text());
+    const before = { ...state.params };
+    for (const k of Object.keys(DEFAULT_PARAMS)) if (k in obj) state.params[k] = obj[k];
+    saveParams(); syncSettingsInputs(); reanalyzeAll(); renderAll();
+    toast(`設定を読み込みました（${f.name}）`, "取り消し", () => {
+      state.params = before; saveParams(); syncSettingsInputs(); reanalyzeAll(); renderAll();
+    });
+  } catch (err) {
+    toast(`設定を読み込めませんでした: ${err.message}`);
+  }
+});
+$("#btnSettings").addEventListener("click", () => { syncSettingsInputs(); dlg.showModal(); });
+
+/* ---- ドラッグ＆ドロップ（画面全体で受ける） ---- */
+const overlay = $("#dropOverlay");
+let dragDepth = 0;
+const hasFiles = (ev) => ev.dataTransfer && Array.from(ev.dataTransfer.types || []).includes("Files");
+window.addEventListener("dragenter", (ev) => {
+  if (!hasFiles(ev)) return;
+  ev.preventDefault();
+  dragDepth++;
+  overlay.hidden = false;
+  $("#dzMini").classList.add("is-drag");
+  const hero = $("#dzHero"); if (hero) hero.classList.add("is-drag");
+});
+window.addEventListener("dragover", (ev) => { if (hasFiles(ev)) ev.preventDefault(); });
+window.addEventListener("dragleave", (ev) => {
+  if (!hasFiles(ev)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) endDrag();
+});
+window.addEventListener("drop", (ev) => {
+  if (!hasFiles(ev)) return;
+  ev.preventDefault();
+  dragDepth = 0;
+  endDrag();
+  addFiles(ev.dataTransfer.files);
+});
+function endDrag() {
+  overlay.hidden = true;
+  $("#dzMini").classList.remove("is-drag");
+  const hero = $("#dzHero"); if (hero) hero.classList.remove("is-drag");
+}
+
+/* ---- 配色（ライト/ダーク）切替に線図を追従させる ---- */
+const mq = window.matchMedia("(prefers-color-scheme: dark)");
+(mq.addEventListener ? mq.addEventListener.bind(mq, "change") : mq.addListener.bind(mq))(() => {
+  for (const c of charts) c.draw();
+});
+
+/* ============================================================================
+ * 30. 起動
+ * ==========================================================================*/
+loadParams();
+buildSettings();
+renderAll();
+</script>
+</body>
+</html>
