@@ -1,0 +1,196 @@
+/* ============================================================
+   デザイントークン — 見た目の値はすべてここに集約する。
+   コンポーネント側（app.css）は生の px / カラーコードを書かない。
+   ============================================================ */
+:root{
+  color-scheme: light;
+
+  /* ---- パレット: メイン = 深い青 ---- */
+  --blue-950:#061a35;
+  --blue-900:#0a2647;
+  --blue-800:#0f3462;
+  --blue-700:#14427c;
+  --blue-600:#1c5596;
+  --blue-500:#2a6db5;
+  --blue-400:#5891cd;
+  --blue-300:#8fb6de;
+  --blue-200:#c2d8ec;
+  --blue-100:#e2ecf7;
+  --blue-050:#f1f6fc;
+
+  /* ---- パレット: アクセント = ティール（青と同系で調和する寒色） ---- */
+  --teal-800:#075353;
+  --teal-700:#0b6a68;
+  --teal-600:#0e807c;
+  --teal-500:#159c95;
+  --teal-100:#dcf1ef;
+
+  /* ---- パレット: 状態色（彩度を落として深い青と調和させる） ---- */
+  --green-700:#15613d;
+  --green-600:#1c7a4d;
+  --green-100:#e1f1e8;
+  --amber-700:#8a5806;
+  --amber-600:#a56a09;
+  --amber-100:#fbeed6;
+  --red-700:#93201a;
+  --red-600:#b3271f;
+  --red-100:#fbe3e1;
+
+  /* ---- パレット: ニュートラル（青みを含ませてベースを調和させる） ---- */
+  --n-0:#ffffff;
+  --n-25:#fafcfe;
+  --n-50:#f4f7fb;
+  --n-100:#eaeff6;
+  --n-200:#dbe3ee;
+  --n-300:#c2cddd;
+  --n-400:#93a2b8;
+  --n-500:#6b7a91;
+  --n-600:#4d5b70;
+  --n-700:#38445a;
+  --n-800:#232e41;
+  --n-900:#141c2a;
+
+  /* ---- セマンティック ---- */
+  --bg: var(--n-50);
+  --surface: var(--n-0);
+  --surface-2: var(--n-25);
+  --surface-sunken: var(--n-100);
+  --border: var(--n-200);
+  --border-strong: var(--n-300);
+  --text: var(--n-800);
+  --text-muted: var(--n-500);
+  --text-on-dark: #ffffff;
+
+  --primary: var(--blue-900);
+  --primary-hover: var(--blue-800);
+  --primary-active: var(--blue-950);
+  --primary-soft: var(--blue-100);
+  --primary-soft-2: var(--blue-050);
+  --primary-text: var(--blue-800);
+  --accent: var(--teal-600);
+  --accent-soft: var(--teal-100);
+  --accent-text: var(--teal-800);
+  --focus: var(--blue-500);
+
+  --ok: var(--green-600);
+  --ok-text: var(--green-700);
+  --ok-bg: var(--green-100);
+  --warn: var(--amber-600);
+  --warn-text: var(--amber-700);
+  --warn-bg: var(--amber-100);
+  --err: var(--red-600);
+  --err-text: var(--red-700);
+  --err-bg: var(--red-100);
+  --na: var(--n-500);
+  --na-bg: var(--n-100);
+
+  /* ---- 余白 ---- */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --sp-7:48px;
+
+  /* ---- 角丸 ---- */
+  --r-1:4px; --r-2:8px; --r-3:12px; --r-pill:999px;
+
+  /* ---- 文字 ---- */
+  --font: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", "Meiryo",
+          -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", "Consolas", "Roboto Mono", "Courier New", monospace;
+  --fs-1:11px; --fs-2:12px; --fs-3:13px; --fs-4:15px; --fs-5:18px; --fs-6:21px;
+  --lh-tight:1.25; --lh:1.55;
+  --fw-normal:400; --fw-med:600; --fw-bold:700;
+
+  /* ---- 高さ ---- */
+  --h-ctl:30px; --h-ctl-lg:38px; --h-appbar:66px; --h-tab:38px;
+
+  /* ---- 影 ---- */
+  --sh-1: 0 1px 2px rgba(10,38,71,.06), 0 1px 1px rgba(10,38,71,.04);
+  --sh-2: 0 2px 8px rgba(10,38,71,.10);
+  --sh-3: 0 12px 32px rgba(10,38,71,.20);
+  --ring: 0 0 0 3px rgba(42,109,181,.35);
+
+  /* ---- モーション ---- */
+  --dur-1:110ms; --dur-2:180ms; --ease: cubic-bezier(.2,.6,.2,1);
+
+  /* ---- レイアウト ---- */
+  --rail-w: 296px;
+  --gap: var(--sp-4);
+  --w-select: 170px;
+  --w-search: 220px;
+  --w-range: 84px;
+
+  /* ---- 線図 ---- */
+  --chart-pad-l:60; --chart-pad-r:14; --chart-pad-t:12; --chart-pad-b:38;
+  --chart-ov-pad-l:34; --chart-ov-pad-b:16;      /* ミニマップは軸ラベルを省く */
+  --chart-fs:11;
+  --h-overview:78px; --h-overview-min:44px; --h-overview-max:220px;
+  --chart-ink: var(--n-700);
+  --chart-grid: var(--n-200);
+  --chart-axis: var(--n-400);
+  --chart-line: var(--blue-700);
+  --chart-line-2: var(--blue-400);
+  --chart-fit: var(--teal-600);
+  --chart-offset: var(--amber-600);
+  --chart-yield: var(--teal-700);
+  --chart-fracture: var(--red-600);
+  --chart-band: rgba(42,109,181,.10);
+  --chart-halo: var(--n-0);
+  --chart-sel-fill: rgba(42,109,181,.12);
+  --chart-sel-border: var(--blue-600);
+  --chart-ov-mask: rgba(10,38,71,.13);
+  --chart-ov-border: var(--blue-700);
+}
+
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#0b1524;
+    --surface:#131f31;
+    --surface-2:#16243a;
+    --surface-sunken:#0e1a2b;
+    --border:#25364e;
+    --border-strong:#33475f;
+    --text:#e6edf6;
+    --text-muted:#9fb0c6;
+
+    --primary: var(--blue-400);
+    --primary-hover: var(--blue-300);
+    --primary-active: var(--blue-500);
+    --primary-soft:#17304f;
+    --primary-soft-2:#132741;
+    --primary-text: var(--blue-200);
+    --text-on-dark: #06121f;
+    --accent: var(--teal-500);
+    --accent-soft:#0d3a3a;
+    --accent-text:#8fd8d2;
+    --focus: var(--blue-300);
+
+    --ok:#4fbf85; --ok-text:#8fdcb2; --ok-bg:#0f3527;
+    --warn:#d9a441; --warn-text:#efc97f; --warn-bg:#3a2d0f;
+    --err:#e2685f; --err-text:#f2a29b; --err-bg:#3b1714;
+    --na:#8496ad; --na-bg:#1b2942;
+
+    --sh-1: 0 1px 2px rgba(0,0,0,.45);
+    --sh-2: 0 2px 10px rgba(0,0,0,.5);
+    --sh-3: 0 14px 34px rgba(0,0,0,.6);
+    --ring: 0 0 0 3px rgba(143,182,222,.4);
+
+    --chart-ink:#c3d2e5;
+    --chart-grid:#25364e;
+    --chart-axis:#4a5e7a;
+    --chart-line: var(--blue-300);
+    --chart-line-2: var(--blue-500);
+    --chart-fit: var(--teal-500);
+    --chart-offset:#d9a441;
+    --chart-yield: var(--teal-500);
+    --chart-fracture:#e2685f;
+    --chart-band: rgba(143,182,222,.12);
+    --chart-halo:#131f31;
+    --chart-sel-fill: rgba(143,182,222,.16);
+    --chart-sel-border: var(--blue-300);
+    --chart-ov-mask: rgba(4,10,20,.55);
+    --chart-ov-border: var(--blue-300);
+  }
+}
+
+@media (prefers-reduced-motion: reduce){
+  :root{ --dur-1:0ms; --dur-2:0ms; }
+}
