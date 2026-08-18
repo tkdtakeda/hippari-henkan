@@ -1,0 +1,126 @@
+/* ============================================================
+   レポートモード（用紙 1 枚：表 ＋ 応力-変位の全体像グラフ）
+   と、線図の最大化ウィンドウ。
+   見た目の値は tokens.css のトークンから選ぶ（生の px / 色は書かない）。
+   ============================================================ */
+
+/* ---- モード上部のツールバー ---- */
+.panel--report{
+  display:grid; grid-template-rows:auto minmax(0,1fr); grid-template-columns:minmax(0,1fr);
+  gap:var(--gap); overflow:hidden;
+}
+.reportbar{
+  display:flex; align-items:flex-end; gap:var(--sp-3); flex-wrap:wrap;
+  padding:var(--sp-3); border:1px solid var(--border); border-radius:var(--r-2);
+  background:var(--surface-2);
+}
+.reportbar__title{ flex:1 1 320px; min-width:0; }
+.reportbar__hint{ flex:1 1 240px; min-width:0; font-size:var(--fs-1); color:var(--text-muted); align-self:center; }
+.reportbar__hint b{ color:var(--text); }
+.reportbar .spacer{ margin-left:auto; }
+.reportbar .chip{ align-self:center; }
+
+/* ---- 用紙（A4 横）。中身は用紙の中だけで完結させる ---- */
+.panel--report > .sheet{ margin:0 auto; height:100%; }
+.sheet{
+  width:var(--sheet-w); max-width:100%;
+  display:grid; grid-template-rows:auto auto minmax(min-content,1fr); gap:var(--sheet-gap);
+  padding:var(--sheet-pad);
+  background:var(--sheet-paper); color:var(--sheet-ink);
+  border:1px solid var(--border); border-radius:var(--r-2); box-shadow:var(--sheet-shadow);
+  overflow:auto;
+}
+.sheet__head{ display:grid; gap:var(--sp-3); border-bottom:2px solid var(--sheet-rule-strong); padding-bottom:var(--sp-3); }
+.sheet__title{
+  font-size:var(--fs-6); font-weight:var(--fw-bold); line-height:var(--lh-tight);
+  letter-spacing:.02em; word-break:break-all;
+}
+.sheet__meta{ display:flex; flex-wrap:wrap; gap:var(--sp-2) var(--sp-5); font-size:var(--fs-2); }
+.rp__metaitem{ display:flex; align-items:baseline; gap:var(--sp-2); min-width:0; }
+.rp__metaitem dt{ color:var(--text-muted); white-space:nowrap; }
+.rp__metaitem dd{ font-weight:var(--fw-med); font-variant-numeric:tabular-nums; word-break:break-all; }
+.rp__none{ color:var(--text-muted); font-weight:var(--fw-normal); }
+
+/* min-height:0 を置くと行が「中身ゼロ」まで潰れて重なるので、グラフの段だけに付ける */
+.sheet__block{ display:grid; gap:var(--sp-2); }
+.sheet__block--chart{ min-height:0; grid-template-rows:auto minmax(var(--sheet-chart-h),1fr) auto; }
+.sheet__h{
+  font-size:var(--fs-3); font-weight:var(--fw-bold); color:var(--text-muted);
+  letter-spacing:.08em;
+}
+.sheet__note{ font-size:var(--fs-1); color:var(--text-muted); line-height:var(--lh); }
+.sheet__note b{ color:var(--text); }
+
+/* ---- 結果表（列＝項目 / 行＝名前・単位・測定値・合否判定） ---- */
+.rp{
+  width:100%; min-width:var(--sheet-table-min); border-collapse:collapse; table-layout:fixed;
+  font-variant-numeric:tabular-nums;
+}
+.rp th,.rp td{
+  border:1px solid var(--sheet-rule); padding:var(--sp-2); text-align:center; vertical-align:middle;
+  font-size:var(--fs-2); word-break:break-word;
+}
+.rp thead th{ background:var(--sheet-head-bg); }
+.rp__rowhead{
+  width:9ch; background:var(--sheet-head-bg); text-align:left; white-space:nowrap;
+  font-size:var(--fs-2); font-weight:var(--fw-bold); color:var(--text-muted);
+}
+.rp__name{ display:block; font-size:var(--fs-3); font-weight:var(--fw-bold); color:var(--text); line-height:var(--lh-tight); }
+.rp__sub{ display:block; margin-top:2px; font-size:var(--fs-1); font-weight:var(--fw-normal); color:var(--text-muted); }
+.rp__unit{ color:var(--text-muted); }
+.rp__row--val td{ background:var(--surface-2); }
+.rp__val{ font-size:var(--fs-5); font-weight:var(--fw-bold); }
+.rp__val--text{ font-size:var(--fs-3); }
+/* 仮の値であることが表からも分かるようにする（実データに差し替えたらこの装飾は外す） */
+.rp__sample{ border-bottom:1px dashed var(--warn); padding-bottom:1px; }
+.rp__judge .status{ font-size:var(--fs-1); }
+
+/* ---- 用紙の中のグラフ ---- */
+/* 最下部のグラフは残りの高さいっぱいまで伸びる（下限は --sheet-chart-h） */
+.rp__chart{
+  position:relative; min-height:var(--sheet-chart-h); height:100%;
+  border:1px solid var(--sheet-rule); border-radius:var(--r-1); background:var(--surface);
+  overflow:hidden;
+}
+.rp__chart canvas{ position:absolute; inset:0; display:block; }
+.rp__chart--na{
+  display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-4);
+  border-style:dashed; color:var(--text-muted); font-size:var(--fs-2);
+}
+.rp__chart--na svg{ width:20px; height:20px; color:var(--warn); flex:none; }
+.rp__chart--na b{ display:block; color:var(--text); font-size:var(--fs-3); margin-bottom:2px; }
+
+/* ============================================================
+   線図の最大化ウィンドウ
+   ============================================================ */
+#dlgChart{ width:min(1760px, 97vw); height:94dvh; max-height:94dvh; }
+#dlgChart::backdrop{ background:rgba(6,26,53,.66); }
+.dlg--max{ grid-template-rows:auto minmax(0,1fr); height:100%; max-height:none; }
+.dlg--max .dlg__head{ flex-wrap:wrap; }
+.dlg__body--flush{ display:grid; min-height:0; padding:var(--sp-3); overflow:hidden; }
+.dlg__body--flush > *{ min-height:0; min-width:0; }
+/* 最大化中は全体図を大きめに取り、作図領域そのものは目一杯に広げる */
+.charts--max{ --h-overview:118px; }
+
+/* ============================================================
+   印刷（レポートの用紙だけを刷る）
+   ============================================================ */
+@media print{
+  @page{ size:A4 landscape; margin:8mm; }
+  .appbar,.rail,.tabs,.tabs__note,.verdict,.reportbar,.toast-area,.dropoverlay,dialog{ display:none !important; }
+  html,body{ height:auto; background:#fff; }
+  .app,.layout,.stage,.ws,.panel,.panel--report{
+    display:block !important; height:auto !important; min-height:0 !important;
+    overflow:visible !important; border:0 !important; box-shadow:none !important; padding:0 !important;
+  }
+  .ws__head{ display:none !important; }
+  .sheet{
+    width:auto; max-width:none; border:0; border-radius:0; box-shadow:none; overflow:visible;
+    padding:0; break-inside:avoid;
+  }
+  .rp{ min-width:0; }
+  .rp__chart{ height:80mm; border-color:var(--sheet-rule-strong); }
+  /* 画面用に描いたキャンバスを用紙の枠に合わせて伸縮させる */
+  .rp__chart canvas{ width:100% !important; height:100% !important; }
+  .sheet__note{ color:#444; }
+}

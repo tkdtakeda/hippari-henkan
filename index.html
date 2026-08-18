@@ -7,6 +7,7 @@
 <!-- 外部ネットワークは一切参照しない（file:// で開いてそのまま動く） -->
 <link rel="stylesheet" href="assets/css/tokens.css">
 <link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/report.css">
 </head>
 <body>
 <div class="app">
@@ -76,13 +77,15 @@
 <div class="dropoverlay" id="dropOverlay" hidden>
   <div>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-    ここにドロップして読み込む
-    <small>.xtux / .vtav（変換＋解析）・.csv（解析のみ）</small>
+    ここにドロップすると、そのまま変換して線図まで表示します
+    <small>.xtux / .vtav（変換＋解析）・.csv（解析のみ）　／　変換の確認は出ません</small>
   </div>
 </div>
 
 <input type="file" id="filePicker" multiple accept=".xtux,.vtav,.csv,.CSV,.XTUX,.VTAV" hidden>
 <input type="file" id="settingsPicker" accept=".json,application/json" hidden>
+
+<dialog id="dlgChart" aria-label="線図（最大化）"></dialog>
 
 <dialog id="dlgSettings" aria-labelledby="dlgTitle">
   <form method="dialog" class="dlg">
@@ -109,6 +112,7 @@
 <script src="assets/js/zip.js"></script>
 <script src="assets/js/analysis.js"></script>
 <script src="assets/js/chart.js"></script>
+<script src="assets/js/report.js"></script>
 <script src="assets/js/app.js"></script>
 </body>
 </html>

@@ -13,8 +13,9 @@ const LS_KEY = "trapezium-html-tool/params/v1";
 const state = {
   entries: [],
   selectedId: null,
-  view: "single",              // 'single' | 'summary'
-  tab: "report",
+  view: "single",              // 'single' | 'report'（レポートモード）| 'summary'
+  tab: "charts",               // 単票のタブ。ドロップ直後は線図を開く
+  chartMax: null,              // null | 'main' | 'sub'（線図の最大化ウィンドウ）
   busy: false,
   progress: null,
   params: { ...DEFAULT_PARAMS },
@@ -31,7 +32,7 @@ const state = {
 };
 let seq = 0;
 const charts = [];                 // 破棄・再描画のための一覧
-const chartRefs = { main: null, ov: null, sub: null };
+const chartRefs = { main: null, ov: null, sub: null, report: null };
 
 function loadParams() {
   try {
@@ -59,12 +60,15 @@ function addFiles(list) {
     state.entries.push({
       id: ++seq, file: f, name: f.name, base, ext, size: f.size,
       kind: ext === ".csv" ? "csv" : "dat",
-      status: "queued", error: null, outputs: [], analysis: null,
+      status: "queued", error: null, outputs: [], analysis: null, reportTitle: null,
       areaOverride: { mode: "auto", t: null, w: null, d: null, A: null },
     });
   }
   if (!state.selectedId) state.selectedId = state.entries[0].id;
   renderAll();
+  /* 読み込んだデータは変換する以外に使い道が無いので、確認を挟まず変換〜作図まで進める。
+     変換中に追加された分も runConversion() の中で拾う。 */
+  runConversion();
 }
 
 /* ───────────────── 変換パイプライン（§2） ───────────────── */
@@ -126,20 +130,43 @@ async function processEntry(entry) {
 }
 
 async function runConversion() {
-  const queue = queuedEntries();
-  if (!queue.length || state.busy) return;
+  if (state.busy || !queuedEntries().length) return;
   state.busy = true;
-  for (let i = 0; i < queue.length; i++) {
-    state.progress = { done: i, total: queue.length, name: queue[i].name };
+  const first = queuedEntries()[0];        // 今回投入した先頭。終わったらこれを開く
+  let done = 0;
+  for (;;) {
+    const q = queuedEntries();                       // 変換中に追加されたファイルもここで拾う
+    if (!q.length) break;
+    const e = q[0];
+    state.progress = { done, total: done + q.length, name: e.name };
     renderCta();
-    await processEntry(queue[i]);
-    if (!state.selectedId || !state.entries.some((e) => e.id === state.selectedId)) state.selectedId = queue[i].id;
+    await processEntry(e);
+    done++;
+    if (!state.selectedId || !state.entries.some((x) => x.id === state.selectedId)) state.selectedId = e.id;
   }
   state.progress = null;
   state.busy = false;
-  const firstDone = doneEntries()[0];
-  if (firstDone && (!selected() || selected().status !== "done")) state.selectedId = firstDone.id;
+  /* 「いま入れたもの」を見せる。失敗していたら、変換できた最初のものへ落とす。 */
+  if (first && first.status === "done") state.selectedId = first.id;
+  else if (!selected() || selected().status !== "done") {
+    const firstDone = doneEntries()[0];
+    if (firstDone) state.selectedId = firstDone.id;
+  }
+  openChartsForSelected();
   renderAll();
+}
+
+/** 変換が終わったら線図を開く（ドロップ → 変換 → 作図 まで一息で進める） */
+function openChartsForSelected() {
+  const e = selected();
+  if (!e || e.status !== "done") return;
+  /* 一覧のままでは線図が見えないので単票へ。レポートモードのときは
+     そちらにも全体像グラフがあるので、そのまま留まる。 */
+  if (state.view === "summary") state.view = "single";
+  const { a } = tabAvailability(e);
+  state.tab = a.charts ? "charts" : (a.report ? "report" : "analysis");
+  state.chart.view = null;
+  state.chart.viewSub = null;
 }
 
 /* ───────────────── 断面積の決定（§11.2） ───────────────── */
@@ -370,11 +397,12 @@ function ctaState() {
     return { label: `変換中… ${Math.min(p.done + 1, p.total)} / ${p.total} 件`, note: `現在: ${p.name}`, disabled: true, act: "" };
   }
   if (q.length) {
+    /* 通常は addFiles() から自動で流れるので、ここに来るのは自動変換が止まったとき（再開用） */
     const bytes = q.reduce((a, e) => a + e.size, 0);
     const csvN = q.filter((e) => e.kind === "csv").length;
     return {
       label: `${q.length} 件を変換する`,
-      note: `合計 ${fmtBytes(bytes)}${csvN ? `／うち CSV ${csvN} 件は解析のみ` : ""}`,
+      note: `自動変換が完了していません。合計 ${fmtBytes(bytes)}${csvN ? `／うち CSV ${csvN} 件は解析のみ` : ""}`,
       disabled: false, act: "convert",
     };
   }
@@ -390,7 +418,7 @@ function ctaState() {
   if (state.entries.length) {
     return { label: "ZIP でダウンロード", note: "変換に成功したファイルが 1 件もありません（各ファイルのエラー内容を確認してください）", disabled: true, act: "" };
   }
-  return { label: "ファイルを変換する", note: ".xtux / .vtav / .csv を追加すると実行できます", disabled: true, act: "" };
+  return { label: "ZIP でダウンロード", note: "ファイルをドロップすると、確認なしで変換して線図まで表示します", disabled: true, act: "" };
 }
 function renderCta() {
   const s = ctaState();
@@ -439,11 +467,20 @@ function renderStage() {
   const keepSel = keepId && "selectionStart" in act ? [act.selectionStart, act.selectionEnd] : null;
 
   for (const c of charts.splice(0)) c.destroy();
-  chartRefs.main = chartRefs.ov = chartRefs.sub = null;
+  chartRefs.main = chartRefs.ov = chartRefs.sub = chartRefs.report = null;
 
-  if (!state.entries.length) { elStage.innerHTML = emptyHtml(); return; }
-  elStage.innerHTML = state.view === "summary" ? summaryHtml() : singleHtml(selected());
-  if (state.view === "single" && state.tab === "charts") mountCharts(selected());
+  if (!state.entries.length) {
+    elStage.innerHTML = emptyHtml();
+    renderChartMax();
+    return;
+  }
+  elStage.innerHTML = state.view === "summary" ? summaryHtml()
+    : state.view === "report" ? reportHtml(selected())
+    : singleHtml(selected());
+  /* 最大化中は本体側に線図を作らない（同じ id が 2 つできるのを避ける） */
+  if (state.view === "single" && state.tab === "charts" && !state.chartMax) mountCharts(selected());
+  if (state.view === "report") mountReportChart(selected());
+  renderChartMax();
 
   if (keepId) {
     const el = document.getElementById(keepId);
@@ -456,15 +493,24 @@ function emptyHtml() {
     <div class="dropzone dropzone--hero" id="dzHero" tabindex="0" role="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
       <span class="dropzone__title">試験ファイルをここにドロップ</span>
-      <span>クリックすると選択ダイアログを開きます　／　複数ファイル同時可</span>
+      <span>ドロップした時点で変換を始め、線図まで表示します（確認は出ません）　／　複数ファイル同時可</span>
       <span class="mono">.xtux　.vtav　（変換＋解析）　.csv　（解析のみ）</span>
     </div>
     <div class="empty__points">
+      <div class="empty__point"><b>ドロップしたら作図まで自動</b>変換の確認は出しません。終わった時点で線図タブを開きます。</div>
       <div class="empty__point"><b>通信は一切しません</b>読み込み・変換・作図はすべてこのブラウザ内で完結します。</div>
-      <div class="empty__point"><b>出力は UTF-8 BOM 付き CSV</b>report / results / conditions / waveform（＋audit・analysis）。Excel で文字化けしません。</div>
-      <div class="empty__point"><b>分割 DL と ZIP 一括 DL</b>ファイル単位の個別ダウンロードと、全結果の ZIP をどちらも用意しています。</div>
-      <div class="empty__point"><b>線図と特性値まで</b>SS 曲線／時間-応力線図、引張強さ・耐力・伸び・応力増加速度を算出します。</div>
+      <div class="empty__point"><b>出力は UTF-8 BOM 付き CSV</b>report / results / conditions / waveform（＋audit・analysis）。ファイル単位の個別ダウンロードと ZIP 一括のどちらも使えます。</div>
+      <div class="empty__point"><b>線図・レポートまで</b>SS 曲線／時間-応力線図（最大化あり）と、A4 横 1 枚のレポートを作れます。</div>
     </div>
+  </div>`;
+}
+
+/* ---- 表示モードの切替（単票 / レポート / 一覧）: 位置は固定して押し先だけ変える ---- */
+function viewSeg() {
+  return `<div class="seg" role="group" aria-label="表示切替">
+    <button data-view="single" aria-pressed="${state.view === "single"}">単票</button>
+    <button data-view="report" aria-pressed="${state.view === "report"}">レポート</button>
+    <button data-view="summary" aria-pressed="${state.view === "summary"}">一覧 ${doneEntries().length} 件</button>
   </div>`;
 }
 
@@ -472,7 +518,7 @@ function emptyHtml() {
 /* 内側だけをスクロールさせるタブ（ページ自体はスクロールさせない方針） */
 const FIXED_TABS = new Set(["charts", "results", "waveform", "audit"]);
 const TABS = [
-  { key: "report",  label: "レポート" },
+  { key: "report",  label: "レポート項目" },
   { key: "charts",  label: "線図" },
   { key: "analysis", label: "解析" },
   { key: "results", label: "結果全項目" },
@@ -524,10 +570,7 @@ function singleHtml(e) {
     badges.push(`<span class="badge">CRC-32 <b class="mono">${hex8(e.crc)}</b></span>`);
   }
 
-  const seg = `<div class="seg" role="group" aria-label="表示切替">
-      <button data-view="single" aria-pressed="${state.view === "single"}">単票</button>
-      <button data-view="summary" aria-pressed="${state.view === "summary"}">一覧 ${doneEntries().length} 件</button>
-    </div>`;
+  const seg = viewSeg();
 
   if (e.status !== "done") {
     const body = e.status === "error"
@@ -849,105 +892,194 @@ function areaCardHtml(e) {
 }
 
 /* ---- 線図パネル ---- */
-function chartsPanel(e) {
-  const A = e.analysis;
-  if (!A || !A.series.stress) {
-    return `<div class="reason reason--warn" style="align-self:start">${ICON.warn}<div><b>線図を描けません</b>${esc(e.analysisBlock || "応力が確定していないため作図できません。解析タブで断面積を入力してください。")}</div></div>`;
-  }
+/**
+ * 線図の表示コンテキスト。画面内と最大化ウィンドウで同じ組み立て関数を使うため、
+ * 「どの軸を・どの表示範囲に記録し・どの操作を出すか」をここ 1 か所で決める。
+ */
+function chartCtx() {
   const C = state.chart;
-  const axisOpts = (sel) => Object.entries(AXES).map(([k, v]) =>
-    `<option value="${k}" ${k === sel ? "selected" : ""} ${A.series[k] ? "" : "disabled"}>${esc(v.label)}</option>`).join("");
-  const isSS = C.x === "strain" && C.y === "stress";
-  const preset = isSS ? "ss" : (C.x === "time" && C.y === "stress" ? "ts" : "custom");
+  if (state.chartMax === "sub")  return { x: "time", y: "stress", viewKey: "viewSub", axisLock: true,  withSub: false, max: true };
+  if (state.chartMax === "main") return { x: C.x, y: C.y, viewKey: "view", axisLock: false, withSub: false, max: true };
+  return { x: C.x, y: C.y, viewKey: "view", axisLock: false, withSub: C.side, max: false };
+}
+/** いま線図が置かれている入れ物（本体 or 最大化ウィンドウ）。id はこの中で一意。 */
+const chartHome = () => (state.chartMax ? dlgChart : elStage);
+const cq = (sel) => chartHome().querySelector(sel);
 
-  /* 注目点ジャンプ（無効なものは理由つきで disabled にする） */
-  const jumps = [
+/* 注目点ジャンプ（無効なものは理由つきで disabled にする） */
+function jumpList(A) {
+  return [
     { k: "all",      label: "全体",      ok: true,          why: "" },
     { k: "linear",   label: "直線域",    ok: !!A.linear,    why: "直線域を決定できていません" },
     { k: "yield",    label: "耐力点",    ok: !!A.yieldV,    why: "耐力点（速度法）を検出できていません" },
     { k: "offset",   label: "0.2%耐力",  ok: !!A.offset02,  why: "0.2% 耐力を算出できていません" },
     { k: "fracture", label: "破断点",    ok: !!(A.fractureA || A.fractureB), why: "破断点を検出できていません" },
   ];
+}
+
+/** 作図ツールバー（軸・注釈・表示範囲・ジャンプ） */
+function chartbarHtml(A, K) {
+  const C = state.chart;
+  const axisOpts = (sel) => Object.entries(AXES).map(([k, v]) =>
+    `<option value="${k}" ${k === sel ? "selected" : ""} ${A.series[k] ? "" : "disabled"}>${esc(v.label)}</option>`).join("");
+  const isSS = K.x === "strain" && K.y === "stress";
+  const preset = isSS ? "ss" : (K.x === "time" && K.y === "stress" ? "ts" : "custom");
+  const annOff = isSS ? "" : ' disabled title="注釈は ひずみ-応力線図のときだけ重ねます"';
+  const jumps = jumpList(A);
   const jumpWhy = jumps.filter((j) => !j.ok).map((j) => `${j.label}: ${j.why}`).join("／");
 
-  return `<div class="charts">
-    <div class="chartbar">
-      <div class="chartbar__row">
-        <div class="seg" role="group" aria-label="線図の切替">
-          <button data-act="preset" data-p="ss" aria-pressed="${preset === "ss"}">ひずみ-応力</button>
-          <button data-act="preset" data-p="ts" aria-pressed="${preset === "ts"}">時間-応力</button>
-        </div>
-        <span class="field__label">X 軸</span>
-        <select class="select select--axis" id="axX" data-act="axis" data-k="x">${axisOpts(C.x)}</select>
-        <span class="field__label">Y 軸</span>
-        <select class="select select--axis" id="axY" data-act="axis" data-k="y">${axisOpts(C.y)}</select>
-        <label class="check-line"><input type="checkbox" data-act="cmark" ${C.markers ? "checked" : ""}>マーカー</label>
-        <label class="check-line"><input type="checkbox" data-act="cfit" ${C.fit ? "checked" : ""}>回帰直線・0.2% 線</label>
-        <label class="check-line"><input type="checkbox" data-act="cside" ${C.side ? "checked" : ""}>時間-応力を並べる</label>
-        <span class="rangebar__hint">
-          <span><kbd>ホイール</kbd> 拡大縮小（<kbd>Shift</kbd> X のみ / <kbd>Alt</kbd> Y のみ）</span>
-          <span><kbd>左ドラッグ</kbd> 移動</span>
-          <span><kbd>右ドラッグ</kbd> 囲って拡大</span>
-          <span><kbd>ダブルクリック</kbd> 全体</span>
-        </span>
-      </div>
-      <div class="chartbar__row rangebar">
-        <span class="rangebar__group">
-          <span class="rangebar__label">X</span>
-          <input id="rngXMin" type="number" step="any" data-act="range" data-k="xMin" aria-label="X 軸の下限">
-          <span class="rangebar__sep">〜</span>
-          <input id="rngXMax" type="number" step="any" data-act="range" data-k="xMax" aria-label="X 軸の上限">
-          <button class="nudge" data-act="nudge" data-d="xl" title="X を左へ 15% 動かす">${ICON.arrowL}</button>
-          <button class="nudge" data-act="nudge" data-d="xr" title="X を右へ 15% 動かす">${ICON.arrowR}</button>
-        </span>
-        <span class="rangebar__div"></span>
-        <span class="rangebar__group">
-          <span class="rangebar__label">Y</span>
-          <input id="rngYMin" type="number" step="any" data-act="range" data-k="yMin" aria-label="Y 軸の下限">
-          <span class="rangebar__sep">〜</span>
-          <input id="rngYMax" type="number" step="any" data-act="range" data-k="yMax" aria-label="Y 軸の上限">
-          <button class="nudge" data-act="nudge" data-d="yd" title="Y を下へ 15% 動かす">${ICON.arrowD}</button>
-          <button class="nudge" data-act="nudge" data-d="yu" title="Y を上へ 15% 動かす">${ICON.arrowU}</button>
-        </span>
-        <span class="rangebar__div"></span>
-        <span class="jump">
-          <span class="jump__label">拡大して確認:</span>
-          ${jumps.map((j) => `<button class="chip btn--sm" data-act="jump" data-j="${j.k}" ${j.ok ? "" : `disabled title="${esc(j.why)}"`}>${esc(j.label)}</button>`).join("")}
-        </span>
-      </div>
-      ${jumpWhy ? `<p class="chartbar__note">押せない拡大ボタンの理由: ${esc(jumpWhy)}</p>` : ""}
-      ${!isSS ? `<p class="chartbar__note">注釈（耐力点▽・破断点×・0.2%耐力★・回帰直線）は ひずみ-応力線図のときに重ねます。</p>` : ""}
+  return `<div class="chartbar">
+    <div class="chartbar__row">
+      ${K.axisLock
+        ? `<span class="badge">軸 <b>時間 － 応力</b>（並べて表示している線図を最大化中）</span>`
+        : `<div class="seg" role="group" aria-label="線図の切替">
+             <button data-act="preset" data-p="ss" aria-pressed="${preset === "ss"}">ひずみ-応力</button>
+             <button data-act="preset" data-p="ts" aria-pressed="${preset === "ts"}">時間-応力</button>
+           </div>
+           <span class="field__label">X 軸</span>
+           <select class="select select--axis" id="axX" data-act="axis" data-k="x">${axisOpts(K.x)}</select>
+           <span class="field__label">Y 軸</span>
+           <select class="select select--axis" id="axY" data-act="axis" data-k="y">${axisOpts(K.y)}</select>`}
+      <label class="check-line"><input type="checkbox" data-act="cmark"${annOff} ${C.markers ? "checked" : ""}>マーカー</label>
+      <label class="check-line"><input type="checkbox" data-act="cfit"${annOff} ${C.fit ? "checked" : ""}>回帰直線・0.2% 線</label>
+      ${K.max ? "" : `<label class="check-line"><input type="checkbox" data-act="cside" ${C.side ? "checked" : ""}>時間-応力を並べる</label>`}
+      <span class="rangebar__hint">
+        <span><kbd>ホイール</kbd> 拡大縮小（<kbd>Shift</kbd> X のみ / <kbd>Alt</kbd> Y のみ）</span>
+        <span><kbd>左ドラッグ</kbd> 移動</span>
+        <span><kbd>右ドラッグ</kbd> 囲って拡大</span>
+        <span><kbd>ダブルクリック</kbd> 全体</span>
+      </span>
     </div>
+    <div class="chartbar__row rangebar">
+      <span class="rangebar__group">
+        <span class="rangebar__label">X</span>
+        <input id="rngXMin" type="number" step="any" data-act="range" data-k="xMin" aria-label="X 軸の下限">
+        <span class="rangebar__sep">〜</span>
+        <input id="rngXMax" type="number" step="any" data-act="range" data-k="xMax" aria-label="X 軸の上限">
+        <button class="nudge" data-act="nudge" data-d="xl" title="X を左へ 15% 動かす">${ICON.arrowL}</button>
+        <button class="nudge" data-act="nudge" data-d="xr" title="X を右へ 15% 動かす">${ICON.arrowR}</button>
+      </span>
+      <span class="rangebar__div"></span>
+      <span class="rangebar__group">
+        <span class="rangebar__label">Y</span>
+        <input id="rngYMin" type="number" step="any" data-act="range" data-k="yMin" aria-label="Y 軸の下限">
+        <span class="rangebar__sep">〜</span>
+        <input id="rngYMax" type="number" step="any" data-act="range" data-k="yMax" aria-label="Y 軸の上限">
+        <button class="nudge" data-act="nudge" data-d="yd" title="Y を下へ 15% 動かす">${ICON.arrowD}</button>
+        <button class="nudge" data-act="nudge" data-d="yu" title="Y を上へ 15% 動かす">${ICON.arrowU}</button>
+      </span>
+      <span class="rangebar__div"></span>
+      <span class="jump">
+        <span class="jump__label">拡大して確認:</span>
+        ${jumps.map((j) => `<button class="chip btn--sm" data-act="jump" data-j="${j.k}" ${j.ok ? "" : `disabled title="${esc(j.why)}"`}>${esc(j.label)}</button>`).join("")}
+      </span>
+    </div>
+    ${jumpWhy ? `<p class="chartbar__note">押せない拡大ボタンの理由: ${esc(jumpWhy)}</p>` : ""}
+    ${!isSS ? `<p class="chartbar__note">注釈（耐力点▽・破断点×・0.2%耐力★・回帰直線）は ひずみ-応力線図のときに重ねます。</p>` : ""}
+  </div>`;
+}
 
-    <div class="charts__row${C.side ? " is-split" : ""}">
-      <div class="card chartcard">
-        <div class="card__head">
-          <span class="card__title" id="c1title">${esc(AXES[C.x].label)} － ${esc(AXES[C.y].label)}</span>
-          <div class="card__tools"><button class="chip btn--sm" data-act="png" data-c="0">${ICON.dl}PNG 保存</button></div>
-        </div>
-        <div class="chart-host" id="chart1" tabindex="0" role="img"
-             aria-label="${esc(AXES[C.x].label)} と ${esc(AXES[C.y].label)} の線図。矢印キーで移動、+ と − で拡大縮小、0 で全体表示。">
-          <div class="chart-zoomstate" id="zoomState"></div>
-        </div>
-        <div class="overview${C.ovCollapsed ? " is-collapsed" : ""}" id="ovWrap">
-          <div class="overview__bar">
-            <b>全体図</b>
-            <span>${C.ovCollapsed ? "たたんでいます" : "枠をドラッグすると表示範囲が動きます"}</span>
-            <span style="margin-left:auto"></span>
-            <button class="chip btn--sm" data-act="ovtoggle">${C.ovCollapsed ? "開く" : "たたむ"}</button>
-          </div>
-          <div class="overview__host" id="chartOv"></div>
-        </div>
-        <div class="legend" id="legend1"></div>
+/** 主図カード（本体でも最大化ウィンドウでも同じものを使う） */
+function chartCardHtml(A, K) {
+  const C = state.chart;
+  const title = `${AXES[K.x].label} － ${AXES[K.y].label}`;
+  const tool = K.max ? ""      /* 「もとの画面に戻す」はウィンドウの見出しに 1 つだけ置く */
+    : `<button class="chip btn--sm" data-act="cmax" data-c="0">${ICON.expand}<span>最大化</span></button>`;
+  return `<div class="card chartcard">
+    <div class="card__head">
+      <span class="card__title" id="c1title">${esc(title)}</span>
+      <div class="card__tools">
+        <button class="chip btn--sm" data-act="png" data-c="0">${ICON.dl}PNG 保存</button>
+        ${tool}
       </div>
-      ${C.side ? `<div class="card chartcard">
-        <div class="card__head"><span class="card__title">時間 － 応力線図</span>
-          <div class="card__tools"><button class="chip btn--sm" data-act="png" data-c="1">${ICON.dl}PNG 保存</button></div></div>
-        <div class="chart-host" id="chart2" tabindex="0" role="img" aria-label="時間と応力の線図"></div>
-        <div class="legend" id="legend2"></div>
-      </div>` : ""}
+    </div>
+    <div class="chart-host" id="chart1" tabindex="0" role="img"
+         aria-label="${esc(title)} の線図。矢印キーで移動、+ と − で拡大縮小、0 で全体表示。">
+      <div class="chart-zoomstate" id="zoomState"></div>
+    </div>
+    <div class="overview${C.ovCollapsed ? " is-collapsed" : ""}" id="ovWrap">
+      <div class="overview__bar">
+        <b>全体図</b>
+        <span>${C.ovCollapsed ? "たたんでいます" : "枠をドラッグすると表示範囲が動きます"}</span>
+        <span style="margin-left:auto"></span>
+        <button class="chip btn--sm" data-act="ovtoggle">${C.ovCollapsed ? "開く" : "たたむ"}</button>
+      </div>
+      <div class="overview__host" id="chartOv"></div>
+    </div>
+    <div class="legend" id="legend1"></div>
+  </div>`;
+}
+
+/** 副図カード（時間-応力を並べたとき） */
+function chartSubCardHtml() {
+  return `<div class="card chartcard">
+    <div class="card__head"><span class="card__title">時間 － 応力線図</span>
+      <div class="card__tools">
+        <button class="chip btn--sm" data-act="png" data-c="1">${ICON.dl}PNG 保存</button>
+        <button class="chip btn--sm" data-act="cmax" data-c="1">${ICON.expand}<span>最大化</span></button>
+      </div></div>
+    <div class="chart-host" id="chart2" tabindex="0" role="img" aria-label="時間と応力の線図"></div>
+    <div class="legend" id="legend2"></div>
+  </div>`;
+}
+
+/** ツールバー＋線図カードひとそろい */
+function chartWorkspaceHtml(e, K) {
+  const A = e.analysis;
+  return `<div class="charts${K.max ? " charts--max" : ""}">
+    ${chartbarHtml(A, K)}
+    <div class="charts__row${K.withSub ? " is-split" : ""}">
+      ${chartCardHtml(A, K)}
+      ${K.withSub ? chartSubCardHtml() : ""}
     </div>
   </div>`;
+}
+
+function chartsPanel(e) {
+  const A = e.analysis;
+  if (!A || !A.series.stress) {
+    return `<div class="reason reason--warn" style="align-self:start">${ICON.warn}<div><b>線図を描けません</b>${esc(e.analysisBlock || "応力が確定していないため作図できません。解析タブで断面積を入力してください。")}</div></div>`;
+  }
+  if (state.chartMax) {
+    return `<div class="reason" style="align-self:start">${ICON.na}<div><b>いまは最大化ウィンドウで表示しています</b>
+      画面いっぱいの別ウィンドウに線図を移しています。<kbd>Esc</kbd> か「もとの画面に戻す」でここへ戻ります（表示範囲はそのまま引き継ぎます）。</div></div>`;
+  }
+  return chartWorkspaceHtml(e, chartCtx());
+}
+
+/* ---- 線図の最大化ウィンドウ ---- */
+const dlgChart = $("#dlgChart");
+function chartMaxHtml(e) {
+  const K = chartCtx();
+  const what = state.chartMax === "sub" ? "時間 － 応力線図" : `${AXES[K.x].label} － ${AXES[K.y].label}`;
+  return `<div class="dlg dlg--max">
+    <div class="dlg__head">
+      <span class="dlg__title">線図（最大化）</span>
+      <span class="badge">${esc(e.name)}</span>
+      <span class="badge">${esc(what)}</span>
+      <div class="card__tools">
+        <button class="btn btn--plain btn--sm" data-act="cmin">${ICON.shrink}もとの画面に戻す（Esc）</button>
+      </div>
+    </div>
+    <div class="dlg__body dlg__body--flush">${chartWorkspaceHtml(e, K)}</div>
+  </div>`;
+}
+/** 最大化ウィンドウの中身を作り直す。開けない条件になったら閉じる。 */
+function renderChartMax() {
+  const e = selected();
+  const usable = state.chartMax && e && e.status === "done" && e.analysis && e.analysis.series.stress
+    && !(state.chartMax === "sub" && !e.analysis.series.time);
+  if (!usable) {
+    state.chartMax = null;
+    dlgChart.innerHTML = "";
+    if (dlgChart.open) dlgChart.close();
+    return;
+  }
+  dlgChart.innerHTML = chartMaxHtml(e);
+  if (!dlgChart.open) dlgChart.showModal();
+  mountCharts(e);
+  const host = cq("#chart1");
+  if (host && !dlgChart.contains(document.activeElement)) host.focus();
 }
 
 function seriesFor(A, xKey, yKey) {
@@ -1026,17 +1158,20 @@ function buildMainSpec(A, xk, yk) {
       legend.push(legendItem(GLYPH.line, "--chart-line-2", "引張強さ Rm", `${fmtNum(A.rm.value, 1)} N/mm²`));
     }
   }
+  if (xk === "time" && yk === "stress" && A.rampRate) {
+    legend.push(legendItem(GLYPH.dash, "--chart-fit", "応力増加速度", `${fmtNum(A.rampRate.value, 2)} MPa/s（直線域の傾き）`));
+  }
   return { spec, legend };
 }
 
 /* 表示範囲バーとズーム状態バッジの同期 */
 function setRangeInputs(r) {
-  const put = (id, v) => { const el = $(id); if (el && document.activeElement !== el) el.value = fin(v) ? Number(v.toPrecision(5)) : ""; };
+  const put = (id, v) => { const el = cq(id); if (el && document.activeElement !== el) el.value = fin(v) ? Number(v.toPrecision(5)) : ""; };
   put("#rngXMin", r.x0); put("#rngXMax", r.x1);
   put("#rngYMin", r.y0); put("#rngYMax", r.y1);
 }
 function setZoomState(chart, r, zoomed) {
-  const el = $("#zoomState");
+  const el = cq("#zoomState");
   if (!el) return;
   const auto = chart.autoRange();
   const mag = auto && zoomed ? (auto.x1 - auto.x0) / (r.x1 - r.x0) : 1;
@@ -1108,15 +1243,16 @@ function jumpRange(A, xk, yk, kind) {
 function mountCharts(e) {
   const A = e.analysis;
   if (!A || !A.series.stress) return;
-  const host1 = $("#chart1"), hostOv = $("#chartOv");
+  const K = chartCtx();
+  const host1 = cq("#chart1"), hostOv = cq("#chartOv");
   if (!host1) return;
   const C = state.chart;
 
   /* --- 主図 --- */
-  const { spec, legend } = buildMainSpec(A, C.x, C.y);
+  const { spec, legend } = buildMainSpec(A, K.x, K.y);
   const c1 = new LineChart(host1, {
     onViewChange: (r, zoomed) => {
-      C.view = zoomed ? { ...r } : null;
+      C[K.viewKey] = zoomed ? { ...r } : null;
       setRangeInputs(r);
       setZoomState(c1, r, zoomed);
       if (ov) ov.setHighlight(r);
@@ -1125,7 +1261,8 @@ function mountCharts(e) {
   c1.setData(spec);
   charts.push(c1);
   chartRefs.main = c1;
-  $("#legend1").innerHTML = legend.join("");
+  const lg1 = cq("#legend1");
+  if (lg1) lg1.innerHTML = legend.join("");
 
   /* --- ミニマップ（全体図）: 常に全体を描き、いま見ている範囲を枠で示す --- */
   let ov = null;
@@ -1138,11 +1275,11 @@ function mountCharts(e) {
 
   /* 直前の表示範囲を復元してから、バーとバッジを合わせる */
   if (C.pendingJump) {
-    const jr = C.pendingJump === "all" ? null : jumpRange(A, C.x, C.y, C.pendingJump);
+    const jr = C.pendingJump === "all" ? null : jumpRange(A, K.x, K.y, C.pendingJump);
     C.pendingJump = null;
-    C.view = jr || null;
+    C[K.viewKey] = jr || null;
   }
-  if (C.view) c1.setView(C.view, true);
+  if (C[K.viewKey]) c1.setView(C[K.viewKey], true);
   const r0 = c1.range();
   if (r0) {
     setRangeInputs(r0);
@@ -1151,12 +1288,13 @@ function mountCharts(e) {
   }
 
   /* --- 副図（時間-応力）--- */
-  const host2 = $("#chart2");
+  const host2 = cq("#chart2");
   if (host2) {
     const ts = A.series.time ? seriesFor(A, "time", "stress") : null;
     const c2 = new LineChart(host2, {
       onViewChange: (r, zoomed) => { C.viewSub = zoomed ? { ...r } : null; },
     });
+    const lg2 = cq("#legend2");
     if (ts && ts.xs.length) {
       c2.setData({
         xLabel: AXES.time.label, yLabel: AXES.stress.label,
@@ -1165,11 +1303,11 @@ function mountCharts(e) {
         markers: [], bands: [],
       });
       if (C.viewSub) c2.setView(C.viewSub, true);
-      $("#legend2").innerHTML = legendItem(GLYPH.line, "--chart-line", "時間-応力", `${ts.xs.length.toLocaleString("ja-JP")} 点`) +
+      if (lg2) lg2.innerHTML = legendItem(GLYPH.line, "--chart-line", "時間-応力", `${ts.xs.length.toLocaleString("ja-JP")} 点`) +
         (A.rampRate ? legendItem(GLYPH.dash, "--chart-fit", "応力増加速度", `${fmtNum(A.rampRate.value, 2)} MPa/s（直線域の傾き）`) : "");
     } else {
       c2.setData({ xLabel: AXES.time.label, yLabel: AXES.stress.label, xUnit: "sec", yUnit: "N/mm²", xShort: "t", yShort: "σ", series: [], markers: [], bands: [] });
-      $("#legend2").innerHTML = `<span class="legend-item">${statusChip("na", "時間データなし")} 時間列が無いため作図できません</span>`;
+      if (lg2) lg2.innerHTML = `<span class="legend-item">${statusChip("na", "時間データなし")} 時間列が無いため作図できません</span>`;
     }
     charts.push(c2);
     chartRefs.sub = c2;
@@ -1211,10 +1349,7 @@ function summaryHtml() {
         <div class="ws__meta"><span class="badge">変換済 <b>${rows.length}</b> 件</span>
           <span class="badge">列見出しをクリックで並べ替え／行をクリックで単票へ</span></div>
       </div>
-      <div class="seg" role="group" aria-label="表示切替">
-        <button data-view="single" aria-pressed="false">単票</button>
-        <button data-view="summary" aria-pressed="true">一覧 ${rows.length} 件</button>
-      </div>
+      ${viewSeg()}
     </div>
     <div></div><div></div>
     <div class="panel panel--fixed">
@@ -1343,21 +1478,27 @@ elRail.addEventListener("click", (ev) => {
   const b = ev.target.closest(".fileitem");
   if (!b) return;
   state.selectedId = Number(b.dataset.id);
-  state.view = "single";
+  if (state.view === "summary") state.view = "single";
+  state.chartMax = null;
   state.chart.view = null;                 // 別のファイルには前の拡大範囲を持ち込まない
   state.chart.viewSub = null;
   renderAll();
 });
 
-/* ---- ステージ内のクリック ---- */
-elStage.addEventListener("click", (ev) => {
+/* ---- ステージ／最大化ウィンドウ内のクリック（同じ操作を同じ動きにする） ---- */
+function onWorkspaceClick(ev) {
   const hero = ev.target.closest("#dzHero");
   if (hero) { picker.click(); return; }
   const t = ev.target.closest("[data-act],[data-tab],[data-view],[data-sort],[data-open]");
   if (!t) return;
   const e = selected();
 
-  if (t.dataset.view) { state.view = t.dataset.view; scheduleRender(false); return; }
+  if (t.dataset.view) {
+    state.view = t.dataset.view;
+    state.chartMax = null;                 // 表示モードを変えたら最大化ウィンドウは閉じる
+    scheduleRender(false);
+    return;
+  }
   if (t.dataset.tab) { state.tab = t.dataset.tab; state.filter = ""; scheduleRender(false); return; }
   if (t.dataset.open) {
     state.selectedId = Number(t.dataset.open);
@@ -1409,7 +1550,8 @@ elStage.addEventListener("click", (ev) => {
       const c = chartRefs.main;
       if (!c || !e || !e.analysis) break;
       if (t.dataset.j === "all") { c.resetView(); break; }
-      const r = jumpRange(e.analysis, state.chart.x, state.chart.y, t.dataset.j);
+      const K = chartCtx();
+      const r = jumpRange(e.analysis, K.x, K.y, t.dataset.j);
       if (r) c.setView(r);
       break;
     }
@@ -1427,17 +1569,45 @@ elStage.addEventListener("click", (ev) => {
       break;
     case "inspect":
       state.tab = "charts";
+      state.chartMax = null;
       state.chart.x = "strain";
       state.chart.y = "stress";
       state.chart.view = null;
       state.chart.pendingJump = t.dataset.j;      // 線図を作ってから拡大する
       scheduleRender(false);
       break;
+    /* ── 最大化（別ウィンドウで大きく見る） ── */
+    case "cmax":
+      state.tab = "charts";
+      state.chartMax = t.dataset.c === "1" ? "sub" : "main";
+      scheduleRender(false);
+      break;
+    case "cmin":
+      state.chartMax = null;
+      scheduleRender(false);
+      break;
+    /* ── レポートモード ── */
+    case "rp-title-reset": {
+      if (!e) break;
+      e.reportTitle = null;
+      scheduleRender(false);
+      break;
+    }
+    case "rp-print":
+      window.print();
+      break;
   }
+}
+elStage.addEventListener("click", onWorkspaceClick);
+dlgChart.addEventListener("click", onWorkspaceClick);
+dlgChart.addEventListener("close", () => {
+  if (!state.chartMax) return;               // 描画側から閉じたときは何もしない（再帰を避ける）
+  state.chartMax = null;
+  scheduleRender(false);
 });
 
-/* ---- ステージ内の入力変更 ---- */
-elStage.addEventListener("change", (ev) => {
+/* ---- ステージ／最大化ウィンドウ内の入力変更 ---- */
+function onWorkspaceChange(ev) {
   const t = ev.target.closest("[data-act]");
   if (!t) return;
   const e = selected();
@@ -1489,7 +1659,7 @@ elStage.addEventListener("change", (ev) => {
       const auto = c.autoRange();
       if (!auto) return;
       const num = (id, fallback) => {
-        const el = $(id);
+        const el = cq(id);
         const v = el && el.value !== "" ? parseFloat(el.value) : NaN;
         return isFinite(v) ? v : fallback;   // 空欄はその辺だけ自動値に戻す
       };
@@ -1502,8 +1672,18 @@ elStage.addEventListener("change", (ev) => {
       c.setView(v);
       break;
     }
+    case "rp-title": {
+      if (!e) return;
+      const v = t.value.trim();
+      e.reportTitle = v && v !== defaultReportTitle(e) ? v : null;
+      scheduleRender(false);
+      break;
+    }
   }
-});
+}
+elStage.addEventListener("change", onWorkspaceChange);
+dlgChart.addEventListener("change", onWorkspaceChange);
+
 elStage.addEventListener("input", (ev) => {
   if (ev.target.id === "resFilter") { state.filter = ev.target.value; scheduleRender(false); }
 });
@@ -1626,6 +1806,9 @@ function endDrag() {
   $("#dzMini").classList.remove("is-drag");
   const hero = $("#dzHero"); if (hero) hero.classList.remove("is-drag");
 }
+
+/* ---- 印刷の直前に線図を描き直す（用紙のレイアウトに合わせる） ---- */
+window.addEventListener("beforeprint", () => { for (const c of charts) c.draw(); });
 
 /* ---- 配色（ライト/ダーク）切替に線図を追従させる ---- */
 const mq = window.matchMedia("(prefers-color-scheme: dark)");
