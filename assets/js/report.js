@@ -15,7 +15,7 @@
 
 /* ───────────────── 表の列（左から並ぶ順） ─────────────────
  * name      … 表の 1 行目「名前」
- * sub       … 名前の下に小さく添える補足（元ラベル）
+ * sub       … 名前の下に小さく添える補足（変換元ファイルでのラベル）
  * srcLabels … 変換元ファイルの結果ラベル候補（合格範囲・値の引き当てに使う）
  * unit      … 表の 2 行目「単位」。単位を持たない項目は "—"
  * range     … 表の 3 行目「合格範囲」の仮の値（ファイル／設定から取れないときに使う）
@@ -25,32 +25,46 @@
  * d         … ファイルから取れた合格範囲を表示するときの小数桁
  * w         … 表の列幅の重み（桁数の多い列を少し広くする）
  * exp       … 合格範囲を指数表記（1.23×10⁻⁴）で出す
+ *
+ * name / sub の `|` は「ここでなら改行してよい」印（単語の途中では折り返さない）。
+ * `_` の直後も改行してよい。どちらの印も表示には出ない。
  */
 const REPORT_COLS = [
-  { key: "force", w: 1,  kind: "measure", name: "試験力",       sub: "最大点_試験力",       srcLabels: ["最大点_試験力", "最大点_Fm"],
+  { key: "force",  w: 1,    kind: "measure", name: "試験力",           sub: "最大点_試験力",
+    srcLabels: ["最大点_試験力", "最大点_Fm"],
     unit: "N",      d: 0, range: "10,000 以上",        sample: "12,340",    judge: "ok" },
-  { key: "stress", w: 1, kind: "measure", name: "応力",         sub: "最大点_応力",         srcLabels: ["最大点_応力", "最大点_Rm"],
+  { key: "stress", w: 1,    kind: "measure", name: "引張強さ",         sub: "最大点_応力",
+    srcLabels: ["最大点_応力", "最大点_Rm"],
     unit: "N/mm²",  d: 1, range: "270.0 〜 450.0",     sample: "412.7",     judge: "ok" },
-  { key: "elong", w: 0.95,  kind: "measure", name: "伸び",         sub: "破断点_変位(ひずみ)", srcLabels: ["破断点_変位(ひずみ)", "破断点_At"],
+  { key: "elong",  w: 0.95, kind: "measure", name: "伸び",             sub: "破断点_変位|(ひずみ)",
+    srcLabels: ["破断点_変位(ひずみ)", "破断点_At"],
     unit: "%",      d: 2, range: "20.00 以上",         sample: "23.45",     judge: "ok" },
-  { key: "young", w: 1.15,  kind: "measure", name: "弾性率",       sub: "弾性率_Standard",     srcLabels: ["弾性率_Standard"],
+  { key: "young",  w: 1.15, kind: "measure", name: "弾性率",           sub: "弾性率_Standard",
+    srcLabels: ["弾性率_Standard"],
     unit: "N/mm²",  d: 0, range: "180,000 〜 230,000", sample: "205,000",   judge: "ok" },
-  { key: "ramp", w: 1,   kind: "measure", name: "応力増加速度", sub: "応力増加速度",        srcLabels: ["応力増加速度"],
+  { key: "ramp",   w: 1,    kind: "measure", name: "応力|増加速度",     sub: "応力|増加速度",
+    srcLabels: ["応力増加速度"],
     unit: "MPa/s",  d: 1, range: "2.0 〜 20.0",        sample: "9.82",      judge: "ok" },
-  { key: "srate", w: 1.3,   kind: "measure", name: "ひずみ速度",   sub: "歪速度",              srcLabels: ["歪速度"],
+  { key: "srate",  w: 1.3,  kind: "measure", name: "ひずみ速度",       sub: "歪速度",
+    srcLabels: ["歪速度"],
     unit: "s⁻¹",    d: 5, exp: true, range: "2.5×10⁻⁴ 以下", sample: "1.23×10⁻⁴", judge: "warn" },
-  { key: "cross", w: 1.1,  kind: "measure", name: "実績クロス変位速度", sub: "実績クロスヘッド変異速度",
+  { key: "cross",  w: 1.1,  kind: "measure", name: "実績クロス|変位速度", sub: "実績|クロスヘッド|変異速度",
     srcLabels: ["実績クロスヘッド変異速度", "クロスヘッド変異速度"],
     unit: "mm/min", d: 2, range: "2.40 〜 3.60",       sample: "3.00",      judge: "ok" },
-  { key: "spec", w: 0.95,   kind: "spec",    name: "試験片名",     sub: "試験条件",            srcLabels: [],
+  { key: "spec",   w: 0.95, kind: "spec",    name: "試験片名",         sub: "試験条件", srcLabels: [],
     unit: "—",      d: 0, range: null,                 sample: "SPCC-1",    judge: null },
-  { key: "thick", w: 0.9,  kind: "spec",    name: "厚さ",         sub: "試験条件",            srcLabels: [],
+  { key: "thick",  w: 0.9,  kind: "spec",    name: "厚さ",             sub: "試験条件", srcLabels: [],
     unit: "mm",     d: 3, range: null,                 sample: "1.600",     judge: null },
-  { key: "width", w: 0.9,  kind: "spec",    name: "幅",           sub: "試験条件",            srcLabels: [],
+  { key: "width",  w: 0.9,  kind: "spec",    name: "幅",               sub: "試験条件", srcLabels: [],
     unit: "mm",     d: 2, range: null,                 sample: "25.00",     judge: null },
 ];
 
 const JUDGE_TEXT = { ok: "合格", warn: "要確認", ng: "不合格" };
+
+/** 単語の途中では折り返さない。`_` の直後と `|` の位置だけ改行を許す（`|` は表示しない）。 */
+function labelHtml(s) {
+  return esc(s).split("|").map((part) => part.replace(/_/g, "_<wbr>")).join("<wbr>");
+}
 
 /**
  * 合格範囲を決める。出どころは 3 通りあり、画面でも見分けられるようにする。
@@ -74,13 +88,48 @@ function reportRange(e, col) {
   return { text: col.range, src: "sample" };
 }
 
-/* ───────────────── タイトル ───────────────── */
-/** 既定のタイトル。ロット No. が取れないときはファイル名で代用する。 */
-function defaultReportTitle(e) {
-  const lot = (e && e.cond && (e.cond["ロット/製造番号"] || e.cond["品名"])) || "";
-  return `${String(lot || (e ? e.base : "")).trim() || "ロットNo."}_引張試験結果`;
+/* ───────────────── ファイル名の読み解き ─────────────────
+ * ファイル名は  年月日_連番_ロットNo._試験方向[_採取位置…]  に分解できる。
+ * 5 つ目より後ろは採取位置として扱い、下の記号は既知のものとして印を付ける。
+ */
+const POSITION_CODES = new Set(["U", "D", "S", "2", "E", "C", "OS", "DS"]);
+function parseFileTitle(e) {
+  const seg = String(e && e.base ? e.base : "").split("_").map((x) => x.trim()).filter((x) => x !== "");
+  const extra = seg.slice(4);
+  return {
+    segments: seg,
+    date: seg[0] || null,
+    seq: seg[1] || null,
+    lot: seg[2] || null,
+    dir: seg[3] || null,
+    pos: extra.length ? extra.join("・") : null,
+    posKnown: extra.length > 0 && extra.every((x) => POSITION_CODES.has(x.toUpperCase())),
+  };
 }
+/** ロット No. はファイル名から。取れなければ試験条件、それも無ければファイル名全体。 */
+function reportLot(e) {
+  const t = parseFileTitle(e);
+  if (t.lot) return t.lot;
+  const c = (e && e.cond && (e.cond["ロット/製造番号"] || e.cond["品名"])) || "";
+  return String(c).trim() || (e ? e.base : "") || "ロットNo.";
+}
+
+/* ───────────────── タイトル ───────────────── */
+/** 既定のタイトルはファイル名のロット No. から作る。 */
+const defaultReportTitle = (e) => `${reportLot(e)}_引張試験結果`;
 const reportTitle = (e) => (e && e.reportTitle) || defaultReportTitle(e);
+
+/** ファイル名をどう読み解いたかを画面に出す（読み違いにすぐ気づけるように） */
+function fileTitleParts(e) {
+  const t = parseFileTitle(e);
+  const item = (label, v) => `<span class="badge${v ? "" : " is-missing"}">${esc(label)} <b>${v ? esc(v) : "（なし）"}</b></span>`;
+  return `<div class="reportbar__parts">
+    <span class="field__label">ファイル名の読み解き</span>
+    ${item("年月日", t.date)}${item("連番", t.seq)}${item("ロットNo.", t.lot)}${item("試験方向", t.dir)}${item("採取位置", t.pos)}
+    <span class="reportbar__hint">区切りは <b class="mono">_</b>（年月日_連番_ロットNo._試験方向_採取位置…）。
+      採取位置の既知の記号: <b class="mono">${[...POSITION_CODES].join(" ")}</b></span>
+  </div>`;
+}
 
 /* ───────────────── 用紙の見出しに出す試験条件 ───────────────── */
 function reportMeta(e) {
@@ -97,14 +146,19 @@ function reportMeta(e) {
     ? `${fmtNum(y.stress, 1)} N/mm²${fin(y.strain) ? `（ε ${fmtNum(y.strain, 3)} %）` : ""}`
     : null;
 
+  const t = parseFileTitle(e);
+  const fromName = "ファイル名（年月日_連番_ロットNo._試験方向）から読み取り";
   return [
-    ["ロット/製造番号", pick("ロット/製造番号")],
-    ["試験片名", pick("試験片名")],
+    ["ロットNo.", reportLot(e), t.lot ? fromName : "ファイル名から読み取れないため試験条件／ファイル名で代用"],
+    ["試験方向", t.dir, t.dir ? fromName : "ファイル名の 4 つ目が無いため不明"],
+    ["採取位置", t.pos, t.pos
+      ? `ファイル名の 5 つ目以降${t.posKnown ? "（既知の記号）" : "（既知でない記号を含む）"}`
+      : "ファイル名に 5 つ目以降が無いため不明"],
     ["試験日", pick("試験日") || pick("作成日")],
     ["試験片形状", pick("試験片形状")],
     ["厚さ × 幅", dim("厚さ") && dim("幅") ? `${dim("厚さ")} × ${dim("幅")}` : dim("直径") ? `φ ${dim("直径")}` : null],
     ["ゲージ長", `${fmtNum(state.params.gaugeLength, 1)} mm`],
-    ["耐力点（速度法）", yieldText, yieldWhy],
+    ["耐力点", yieldText, `速度法で求めた耐力点。${yieldWhy}`],
     ["入力ファイル", e.name],
   ];
 }
@@ -117,7 +171,7 @@ function reportSheetHtml(e) {
     REPORT_COLS.map((c) => `<col style="width:${(91 * (c.w || 1) / wSum).toFixed(2)}%">`).join("")
   }</colgroup>`;
   const head = REPORT_COLS.map((c) =>
-    `<th scope="col"><span class="rp__name">${esc(c.name)}</span><span class="rp__sub">${esc(c.sub)}</span></th>`).join("");
+    `<th scope="col"><span class="rp__name">${labelHtml(c.name)}</span><span class="rp__sub">${labelHtml(c.sub)}</span></th>`).join("");
   const units = REPORT_COLS.map((c) => `<td class="rp__unit">${esc(c.unit)}</td>`).join("");
   const ranges = REPORT_COLS.map((c) => {
     const r = reportRange(e, c);
@@ -158,11 +212,12 @@ function reportSheetHtml(e) {
         <tbody>
           <tr><th scope="row" class="rp__rowhead">単位</th>${units}</tr>
           <tr><th scope="row" class="rp__rowhead">合格範囲</th>${ranges}</tr>
-          <tr class="rp__row--val"><th scope="row" class="rp__rowhead">測定値</th>${vals}</tr>
-          <tr><th scope="row" class="rp__rowhead">合否判定</th>${judges}</tr>
+          <tr class="rp__row--val"><th scope="row" class="rp__rowhead">測定値<small>（仮）</small></th>${vals}</tr>
+          <tr><th scope="row" class="rp__rowhead">合否判定<small>（仮）</small></th>${judges}</tr>
         </tbody>
       </table>
-      <p class="sheet__note"><b>破線の下線が付いた値は配置確認用の仮の値</b>です（実データとの結合は次の工程）。
+      <p class="sheet__note"><b>「（仮）」の行と破線の下線が付いた値は配置確認用の仮の値</b>です（実データとの結合は次の工程。
+        合否判定はまだ何とも比べていません）。
         合格範囲は ①変換元ファイル（.vtav の下限・上限／未検証）→ ②このツールの設定（応力増加速度）→ ③仮の値 の順に決めます。
         マウスを重ねるとその値の出どころが出ます。</p>
     </section>
@@ -204,7 +259,7 @@ function reportHtml(e) {
         placeholder="${esc(defaultReportTitle(e))}" spellcheck="false">
     </label>
     <button class="chip" data-act="rp-title-reset" ${custom ? "" : `disabled title="いま既定のタイトルです"`}>${ICON.reset}<span>既定に戻す</span></button>
-    <span class="reportbar__hint">既定は <b class="mono">ロットNo._引張試験結果</b>（ロット No. は変換元の試験条件から取ります）</span>
+    <span class="reportbar__hint">既定は <b class="mono">ロットNo._引張試験結果</b>（ロット No. はファイル名から取ります）</span>
     <span class="spacer"></span>
     <span class="reportbar__zoom">
       <div class="seg" role="group" aria-label="用紙の表示倍率">
@@ -214,6 +269,7 @@ function reportHtml(e) {
       <span class="badge">表示 <b id="rpZoom">—</b></span>
     </span>
     <button class="chip" data-act="rp-print">${ICON.print}<span>印刷 / PDF 保存</span></button>
+    ${fileTitleParts(e)}
   </div>`;
 
   const meta = `<span class="badge">対象 <b>${esc(e.name)}</b></span>

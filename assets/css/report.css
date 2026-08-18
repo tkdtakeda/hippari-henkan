@@ -17,6 +17,9 @@
 .reportbar__title{ flex:1 1 320px; min-width:0; }
 .reportbar__hint{ flex:1 1 240px; min-width:0; font-size:var(--fs-1); color:var(--text-muted); align-self:center; }
 .reportbar__hint b{ color:var(--text); }
+.reportbar__parts{ flex:1 1 100%; display:flex; flex-wrap:wrap; gap:var(--sp-1) var(--sp-2); align-items:center; }
+.reportbar__parts .badge b{ color:var(--text); }
+.reportbar__parts .badge.is-missing b{ color:var(--text-muted); font-weight:var(--fw-normal); }
 .reportbar .spacer{ margin-left:auto; }
 .reportbar .chip{ align-self:center; }
 
@@ -71,16 +74,22 @@
   background:var(--sheet-head-bg); text-align:left; white-space:nowrap;
   padding-left:var(--sp-2); font-size:var(--fs-1); font-weight:var(--fw-bold); color:var(--text-muted);
 }
+.rp__rowhead small{ font-size:var(--fs-0); font-weight:var(--fw-normal); }
+/* 名前と元ラベルは単語の途中で折り返さない（改行できるのは <wbr> を入れた所だけ）。
+   狭い列に収めるため、元ラベルは一段小さい文字にする。 */
+.rp__name,.rp__sub{ word-break:keep-all; overflow-wrap:normal; hyphens:none; }
 .rp__name{ display:block; font-size:var(--fs-2); font-weight:var(--fw-bold); color:var(--text); line-height:var(--lh-tight); }
-.rp__sub{ display:block; margin-top:2px; font-size:var(--fs-1); font-weight:var(--fw-normal); color:var(--text-muted); }
+.rp__sub{ display:block; margin-top:2px; font-size:var(--fs-0); font-weight:var(--fw-normal); color:var(--text-muted); line-height:var(--lh-tight); }
 .rp__unit{ color:var(--text-muted); }
 .rp__range{ font-size:var(--fs-1); }
 .rp__range--file{ font-weight:var(--fw-med); }        /* 変換元ファイルから取れた範囲 */
 .rp__range--params{ color:var(--accent-text); }        /* このツールの設定から */
 .rp__range--none{ color:var(--text-muted); }
 .rp__row--val td{ background:var(--surface-2); }
-/* 数値の途中で折り返すと読み違えるので、値・範囲・単位の欄は単語単位で折る */
-.rp__unit,.rp__range,.rp__val{ word-break:normal; overflow-wrap:break-word; }
+/* 数値や「以上」の途中で折り返すと読み違えるので、値・範囲・単位も単語単位で折る
+   （どうしても入らないときだけ overflow-wrap で逃がす）。
+   `.rp td` の指定より強くするため、セレクタを td 付きで書く。 */
+.rp td.rp__unit,.rp td.rp__range,.rp td.rp__val{ word-break:keep-all; overflow-wrap:break-word; }
 .rp__val{ font-size:var(--fs-3); font-weight:var(--fw-bold); }
 .rp__val--text{ font-size:var(--fs-2); }
 /* 仮の値であることが表からも分かるようにする（実データに差し替えたらこの装飾は外す） */

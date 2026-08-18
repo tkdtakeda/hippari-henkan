@@ -94,7 +94,7 @@
   --font: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", "Meiryo",
           -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "SFMono-Regular", "Consolas", "Roboto Mono", "Courier New", monospace;
-  --fs-1:11px; --fs-2:12px; --fs-3:13px; --fs-4:15px; --fs-5:18px; --fs-6:21px;
+  --fs-0:10px; --fs-1:11px; --fs-2:12px; --fs-3:13px; --fs-4:15px; --fs-5:18px; --fs-6:21px;
   --lh-tight:1.25; --lh:1.55;
   --fw-normal:400; --fw-med:600; --fw-bold:700;
 
