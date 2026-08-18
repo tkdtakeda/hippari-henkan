@@ -118,11 +118,13 @@
   --w-range: 84px;
 
   /* ---- レポート（用紙）---- */
-  --sheet-w: 297mm;            /* A4 横 */
+  --sheet-w: 210mm;            /* A4 縦 */
+  --sheet-h: 297mm;
   --sheet-pad: 9mm;
   --sheet-chart-h: 44mm;       /* 用紙内グラフの下限。余りは全部グラフに渡す */
-  --sheet-gap: var(--sp-4);
-  --sheet-table-min: 940px;    /* 表をこれ以上は潰さない（狭いときは用紙内を横スクロール） */
+  --sheet-gap: var(--sp-3);
+  --sheet-table-min: 680px;    /* 表をこれ以上は潰さない（狭いときは用紙内を横スクロール） */
+  --sheet-print-chart-h: 128mm; /* 印刷時のグラフの高さ（A4 縦の残り） */
   --sheet-ink: var(--n-900);
   --sheet-paper: #ffffff;
   --sheet-rule: var(--n-300);

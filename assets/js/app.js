@@ -20,6 +20,7 @@ const state = {
   progress: null,
   params: { ...DEFAULT_PARAMS },
   sort: { key: "name", dir: 1 },
+  reportZoom: "fit",           // レポートの用紙: 'fit'（器に合わせる）| 'actual'（原寸）
   chart: {
     x: "strain", y: "stress", markers: true, fit: true,
     side: false,           // 時間-応力線図を並べて表示するか
@@ -479,7 +480,7 @@ function renderStage() {
     : singleHtml(selected());
   /* 最大化中は本体側に線図を作らない（同じ id が 2 つできるのを避ける） */
   if (state.view === "single" && state.tab === "charts" && !state.chartMax) mountCharts(selected());
-  if (state.view === "report") mountReportChart(selected());
+  if (state.view === "report") mountReport(selected());
   renderChartMax();
 
   if (keepId) {
@@ -1595,6 +1596,10 @@ function onWorkspaceClick(ev) {
     }
     case "rp-print":
       window.print();
+      break;
+    case "rp-zoom":
+      state.reportZoom = t.dataset.z === "actual" ? "actual" : "fit";
+      scheduleRender(false);
       break;
   }
 }

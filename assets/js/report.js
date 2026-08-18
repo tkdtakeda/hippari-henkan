@@ -14,27 +14,65 @@
 "use strict";
 
 /* ───────────────── 表の列（左から並ぶ順） ─────────────────
- * name    … 表の 1 行目「名前」
- * sub     … 名前の下に小さく添える補足（元ラベル）
- * unit    … 表の 2 行目「単位」。単位を持たない項目は "—"
- * sample  … 表の 3 行目「測定値」の仮の値（次工程で解析結果に差し替える）
- * judge   … 表の 4 行目「合否判定」の仮の判定。null は判定の対象外
- * kind    … measure = 測定値 / spec = 試験片の属性（判定の対象外）
+ * name      … 表の 1 行目「名前」
+ * sub       … 名前の下に小さく添える補足（元ラベル）
+ * srcLabels … 変換元ファイルの結果ラベル候補（合格範囲・値の引き当てに使う）
+ * unit      … 表の 2 行目「単位」。単位を持たない項目は "—"
+ * range     … 表の 3 行目「合格範囲」の仮の値（ファイル／設定から取れないときに使う）
+ * sample    … 表の 4 行目「測定値」の仮の値（次工程で解析結果に差し替える）
+ * judge     … 表の 5 行目「合否判定」の仮の判定。null は判定の対象外
+ * kind      … measure = 測定値 / spec = 試験片の属性（判定の対象外）
+ * d         … ファイルから取れた合格範囲を表示するときの小数桁
+ * w         … 表の列幅の重み（桁数の多い列を少し広くする）
+ * exp       … 合格範囲を指数表記（1.23×10⁻⁴）で出す
  */
 const REPORT_COLS = [
-  { key: "force",  kind: "measure", name: "試験力",       sub: "最大点_試験力",       unit: "N",      sample: "12,340",   judge: "ok" },
-  { key: "stress", kind: "measure", name: "応力",         sub: "最大点_応力",         unit: "N/mm²",  sample: "412.7",    judge: "ok" },
-  { key: "elong",  kind: "measure", name: "伸び",         sub: "破断点_変位(ひずみ)", unit: "%",      sample: "23.45",    judge: "ok" },
-  { key: "young",  kind: "measure", name: "弾性率",       sub: "弾性率_Standard",     unit: "N/mm²",  sample: "205,000",  judge: "ok" },
-  { key: "ramp",   kind: "measure", name: "応力増加速度", sub: "応力増加速度",        unit: "MPa/s",  sample: "9.82",     judge: "ok" },
-  { key: "srate",  kind: "measure", name: "ひずみ速度",   sub: "歪速度",              unit: "s⁻¹",    sample: "1.23×10⁻⁴", judge: "warn" },
-  { key: "cross",  kind: "measure", name: "実績クロス変位速度", sub: "実績クロスヘッド変異速度", unit: "mm/min", sample: "3.00", judge: "ok" },
-  { key: "spec",   kind: "spec",    name: "試験片名",     sub: "試験条件",            unit: "—",      sample: "SPCC-1",   judge: null },
-  { key: "thick",  kind: "spec",    name: "厚さ",         sub: "試験条件",            unit: "mm",     sample: "1.600",    judge: null },
-  { key: "width",  kind: "spec",    name: "幅",           sub: "試験条件",            unit: "mm",     sample: "25.00",    judge: null },
+  { key: "force", w: 1,  kind: "measure", name: "試験力",       sub: "最大点_試験力",       srcLabels: ["最大点_試験力", "最大点_Fm"],
+    unit: "N",      d: 0, range: "10,000 以上",        sample: "12,340",    judge: "ok" },
+  { key: "stress", w: 1, kind: "measure", name: "応力",         sub: "最大点_応力",         srcLabels: ["最大点_応力", "最大点_Rm"],
+    unit: "N/mm²",  d: 1, range: "270.0 〜 450.0",     sample: "412.7",     judge: "ok" },
+  { key: "elong", w: 0.95,  kind: "measure", name: "伸び",         sub: "破断点_変位(ひずみ)", srcLabels: ["破断点_変位(ひずみ)", "破断点_At"],
+    unit: "%",      d: 2, range: "20.00 以上",         sample: "23.45",     judge: "ok" },
+  { key: "young", w: 1.15,  kind: "measure", name: "弾性率",       sub: "弾性率_Standard",     srcLabels: ["弾性率_Standard"],
+    unit: "N/mm²",  d: 0, range: "180,000 〜 230,000", sample: "205,000",   judge: "ok" },
+  { key: "ramp", w: 1,   kind: "measure", name: "応力増加速度", sub: "応力増加速度",        srcLabels: ["応力増加速度"],
+    unit: "MPa/s",  d: 1, range: "2.0 〜 20.0",        sample: "9.82",      judge: "ok" },
+  { key: "srate", w: 1.3,   kind: "measure", name: "ひずみ速度",   sub: "歪速度",              srcLabels: ["歪速度"],
+    unit: "s⁻¹",    d: 5, exp: true, range: "2.5×10⁻⁴ 以下", sample: "1.23×10⁻⁴", judge: "warn" },
+  { key: "cross", w: 1.1,  kind: "measure", name: "実績クロス変位速度", sub: "実績クロスヘッド変異速度",
+    srcLabels: ["実績クロスヘッド変異速度", "クロスヘッド変異速度"],
+    unit: "mm/min", d: 2, range: "2.40 〜 3.60",       sample: "3.00",      judge: "ok" },
+  { key: "spec", w: 0.95,   kind: "spec",    name: "試験片名",     sub: "試験条件",            srcLabels: [],
+    unit: "—",      d: 0, range: null,                 sample: "SPCC-1",    judge: null },
+  { key: "thick", w: 0.9,  kind: "spec",    name: "厚さ",         sub: "試験条件",            srcLabels: [],
+    unit: "mm",     d: 3, range: null,                 sample: "1.600",     judge: null },
+  { key: "width", w: 0.9,  kind: "spec",    name: "幅",           sub: "試験条件",            srcLabels: [],
+    unit: "mm",     d: 2, range: null,                 sample: "25.00",     judge: null },
 ];
 
 const JUDGE_TEXT = { ok: "合格", warn: "要確認", ng: "不合格" };
+
+/**
+ * 合格範囲を決める。出どころは 3 通りあり、画面でも見分けられるようにする。
+ *   file   … 変換元ファイル（.vtav の値アンカー直後の 下限/上限）★実ファイルでの裏取りは未了
+ *   params … このツールの設定（判定 › 応力増加速度の許容範囲）
+ *   sample … 配置確認用の仮の値
+ */
+function reportRange(e, col) {
+  if (col.range === null && !col.srcLabels.length) return { text: "—", src: "none" };
+  const row = (e.results || []).find((r) => col.srcLabels.includes(r.label) && fin(r.lo) && fin(r.hi));
+  if (row) {
+    const f = (v) => (col.exp ? fmtExp(v, 2) : fmtNum(v, col.d));
+    return { text: `${f(row.lo)} 〜 ${f(row.hi)}`, src: "file" };
+  }
+  if (col.key === "ramp") {
+    const P = state.params;
+    return P.rampCheck
+      ? { text: `${fmtNum(P.rampMin, 1)} 〜 ${fmtNum(P.rampMax, 1)}`, src: "params" }
+      : { text: "判定しない", src: "params" };
+  }
+  return { text: col.range, src: "sample" };
+}
 
 /* ───────────────── タイトル ───────────────── */
 /** 既定のタイトル。ロット No. が取れないときはファイル名で代用する。 */
@@ -49,6 +87,16 @@ function reportMeta(e) {
   const c = e.cond || {};
   const pick = (k) => (c[k] != null && String(c[k]).trim() !== "" ? String(c[k]) : null);
   const dim = (k) => (pick(k) ? `${pick(k)} mm` : null);
+  const A = e.analysis;
+
+  /* 耐力点（速度法）だけは解析の実値。取れないときは理由を title で追えるようにする */
+  const y = A && A.yieldV && fin(A.yieldV.stress) ? A.yieldV : null;
+  const yieldWhy = y ? y.basis
+    : (A && (A.blocked.find((b) => b.what === "耐力（速度法）") || {}).why) || "解析していないため算出していません";
+  const yieldText = y
+    ? `${fmtNum(y.stress, 1)} N/mm²${fin(y.strain) ? `（ε ${fmtNum(y.strain, 3)} %）` : ""}`
+    : null;
+
   return [
     ["ロット/製造番号", pick("ロット/製造番号")],
     ["試験片名", pick("試験片名")],
@@ -56,23 +104,37 @@ function reportMeta(e) {
     ["試験片形状", pick("試験片形状")],
     ["厚さ × 幅", dim("厚さ") && dim("幅") ? `${dim("厚さ")} × ${dim("幅")}` : dim("直径") ? `φ ${dim("直径")}` : null],
     ["ゲージ長", `${fmtNum(state.params.gaugeLength, 1)} mm`],
+    ["耐力点（速度法）", yieldText, yieldWhy],
     ["入力ファイル", e.name],
   ];
 }
 
 /* ───────────────── 用紙 ───────────────── */
 function reportSheetHtml(e) {
+  /* table-layout:fixed なので、桁の多い列に幅を寄せておく（w は列ごとの重み） */
+  const wSum = REPORT_COLS.reduce((a, c) => a + (c.w || 1), 0);
+  const cols = `<colgroup><col style="width:9%">${
+    REPORT_COLS.map((c) => `<col style="width:${(91 * (c.w || 1) / wSum).toFixed(2)}%">`).join("")
+  }</colgroup>`;
   const head = REPORT_COLS.map((c) =>
     `<th scope="col"><span class="rp__name">${esc(c.name)}</span><span class="rp__sub">${esc(c.sub)}</span></th>`).join("");
   const units = REPORT_COLS.map((c) => `<td class="rp__unit">${esc(c.unit)}</td>`).join("");
+  const ranges = REPORT_COLS.map((c) => {
+    const r = reportRange(e, c);
+    const title = { file: "変換元ファイルから取得（未検証）", params: "設定 › 判定 の許容範囲", sample: "配置確認用の仮の値", none: "判定の対象外" }[r.src];
+    return `<td class="rp__range rp__range--${r.src}">${
+      r.src === "sample" ? `<span class="rp__sample" title="${esc(title)}">${esc(r.text)}</span>`
+                         : `<span title="${esc(title)}">${esc(r.text)}</span>`}</td>`;
+  }).join("");
   const vals = REPORT_COLS.map((c) =>
     `<td class="rp__val${c.kind === "spec" ? " rp__val--text" : ""}"><span class="rp__sample" title="配置確認用の仮の値">${esc(c.sample)}</span></td>`).join("");
   const judges = REPORT_COLS.map((c) => `<td class="rp__judge">${
     c.judge ? statusChip(c.judge === "ng" ? "err" : c.judge, JUDGE_TEXT[c.judge]) : statusChip("na", "対象外")
   }</td>`).join("");
 
-  const meta = reportMeta(e).map(([k, v]) =>
-    `<div class="rp__metaitem"><dt>${esc(k)}</dt><dd>${v ? esc(v) : '<span class="rp__none">（なし）</span>'}</dd></div>`).join("");
+  const meta = reportMeta(e).map(([k, v, why]) =>
+    `<div class="rp__metaitem"${why ? ` title="${esc(why)}"` : ""}><dt>${esc(k)}</dt>
+      <dd>${v ? esc(v) : '<span class="rp__none">（なし）</span>'}</dd></div>`).join("");
 
   const A = e.analysis;
   const canPlot = !!(A && A.series && A.series.stress && A.series.displacement);
@@ -91,15 +153,18 @@ function reportSheetHtml(e) {
     <section class="sheet__block">
       <h3 class="sheet__h">試験結果</h3>
       <table class="rp">
+        ${cols}
         <thead><tr><th scope="row" class="rp__rowhead">名前</th>${head}</tr></thead>
         <tbody>
           <tr><th scope="row" class="rp__rowhead">単位</th>${units}</tr>
+          <tr><th scope="row" class="rp__rowhead">合格範囲</th>${ranges}</tr>
           <tr class="rp__row--val"><th scope="row" class="rp__rowhead">測定値</th>${vals}</tr>
           <tr><th scope="row" class="rp__rowhead">合否判定</th>${judges}</tr>
         </tbody>
       </table>
-      <p class="sheet__note">測定値と合否判定は<b>配置確認用の仮の値</b>です（実データとの結合は次の工程）。
-        単位は各列の 2 行目に、判定はアイコン＋文字で示します。</p>
+      <p class="sheet__note"><b>破線の下線が付いた値は配置確認用の仮の値</b>です（実データとの結合は次の工程）。
+        合格範囲は ①変換元ファイル（.vtav の下限・上限／未検証）→ ②このツールの設定（応力増加速度）→ ③仮の値 の順に決めます。
+        マウスを重ねるとその値の出どころが出ます。</p>
     </section>
 
     <section class="sheet__block sheet__block--chart">
@@ -131,6 +196,7 @@ function reportHtml(e) {
   }
 
   const custom = !!e.reportTitle;
+  const zoom = state.reportZoom === "actual" ? "actual" : "fit";
   const bar = `<div class="reportbar">
     <label class="field reportbar__title">
       <span class="field__label">タイトル（任意に変えられます）</span>
@@ -140,14 +206,46 @@ function reportHtml(e) {
     <button class="chip" data-act="rp-title-reset" ${custom ? "" : `disabled title="いま既定のタイトルです"`}>${ICON.reset}<span>既定に戻す</span></button>
     <span class="reportbar__hint">既定は <b class="mono">ロットNo._引張試験結果</b>（ロット No. は変換元の試験条件から取ります）</span>
     <span class="spacer"></span>
+    <span class="reportbar__zoom">
+      <div class="seg" role="group" aria-label="用紙の表示倍率">
+        <button data-act="rp-zoom" data-z="fit" aria-pressed="${zoom === "fit"}">全体表示</button>
+        <button data-act="rp-zoom" data-z="actual" aria-pressed="${zoom === "actual"}">原寸</button>
+      </div>
+      <span class="badge">表示 <b id="rpZoom">—</b></span>
+    </span>
     <button class="chip" data-act="rp-print">${ICON.print}<span>印刷 / PDF 保存</span></button>
   </div>`;
 
   const meta = `<span class="badge">対象 <b>${esc(e.name)}</b></span>
-    <span class="badge">用紙 <b>A4 横</b></span>
+    <span class="badge">用紙 <b>A4 縦</b></span>
     ${statusChip("warn", "配置確認中（値は仮）")}`;
 
-  return shell(bar + reportSheetHtml(e), meta);
+  return shell(`${bar}<div class="sheet-wrap">${reportSheetHtml(e)}</div>`, meta);
+}
+
+/* ───────────────── 用紙の表示倍率（全体表示 / 原寸） ───────────────── */
+let reportRO = null;
+/** 器に入る倍率を求めて --sheet-scale に入れる。原寸のときは 1 のまま。 */
+function fitReportSheet() {
+  const wrap = $(".sheet-wrap", elStage);
+  const sheet = wrap && $(".sheet", wrap);
+  if (!wrap || !sheet) return;
+  /* offsetWidth / offsetHeight は transform の影響を受けない（＝用紙の実寸） */
+  const sw = sheet.offsetWidth, sh = sheet.offsetHeight;
+  const scale = state.reportZoom === "actual" || !sw || !sh
+    ? 1
+    : Math.max(0.2, Math.min(1, (wrap.clientHeight - 2) / sh, (wrap.clientWidth - 2) / sw));
+  wrap.style.setProperty("--sheet-scale", String(scale));
+  const badge = $("#rpZoom", elStage);
+  if (badge) badge.textContent = `${Math.round(scale * 100)} %`;
+}
+function watchReportSheet() {
+  if (reportRO) { reportRO.disconnect(); reportRO = null; }
+  const wrap = $(".sheet-wrap", elStage);
+  if (!wrap) return;
+  fitReportSheet();
+  reportRO = new ResizeObserver(() => fitReportSheet());
+  reportRO.observe(wrap);
 }
 
 /* ───────────────── 用紙のグラフ（応力 － 変位の全体像） ───────────────── */
@@ -179,4 +277,10 @@ function mountReportChart(e) {
   c.setData(spec);
   charts.push(c);
   chartRefs.report = c;
+}
+
+/** レポートモードの描画あと処理（グラフ＋倍率合わせ） */
+function mountReport(e) {
+  mountReportChart(e);
+  watchReportSheet();
 }

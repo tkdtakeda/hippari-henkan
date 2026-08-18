@@ -20,15 +20,21 @@
 .reportbar .spacer{ margin-left:auto; }
 .reportbar .chip{ align-self:center; }
 
-/* ---- 用紙（A4 横）。中身は用紙の中だけで完結させる ---- */
-.panel--report > .sheet{ margin:0 auto; height:100%; }
+/* ---- 用紙（A4 縦）。印刷と同じ寸法で置き、器に入らなければ縮小して全体を見せる ---- */
+.sheet-wrap{
+  min-height:0; min-width:0; overflow:auto;
+  display:flex; justify-content:center; align-items:flex-start;
+}
 .sheet{
-  width:var(--sheet-w); max-width:100%;
+  width:var(--sheet-w); height:var(--sheet-h); flex:none;
   display:grid; grid-template-rows:auto auto minmax(min-content,1fr); gap:var(--sheet-gap);
   padding:var(--sheet-pad);
   background:var(--sheet-paper); color:var(--sheet-ink);
   border:1px solid var(--border); border-radius:var(--r-2); box-shadow:var(--sheet-shadow);
-  overflow:auto;
+  overflow:hidden;
+  /* 縮小しても変形前の寸法で場所を取るので、余った分を負のマージンで詰める */
+  transform:scale(var(--sheet-scale,1)); transform-origin:top center;
+  margin-bottom:calc(var(--sheet-h) * (var(--sheet-scale,1) - 1));
 }
 .sheet__head{ display:grid; gap:var(--sp-3); border-bottom:2px solid var(--sheet-rule-strong); padding-bottom:var(--sp-3); }
 .sheet__title{
@@ -51,29 +57,37 @@
 .sheet__note{ font-size:var(--fs-1); color:var(--text-muted); line-height:var(--lh); }
 .sheet__note b{ color:var(--text); }
 
-/* ---- 結果表（列＝項目 / 行＝名前・単位・測定値・合否判定） ---- */
+/* ---- 結果表（列＝項目 / 行＝名前・単位・合格範囲・測定値・合否判定） ---- */
 .rp{
   width:100%; min-width:var(--sheet-table-min); border-collapse:collapse; table-layout:fixed;
   font-variant-numeric:tabular-nums;
 }
 .rp th,.rp td{
-  border:1px solid var(--sheet-rule); padding:var(--sp-2); text-align:center; vertical-align:middle;
+  border:1px solid var(--sheet-rule); padding:var(--sp-1) 3px; text-align:center; vertical-align:middle;
   font-size:var(--fs-2); word-break:break-word;
 }
 .rp thead th{ background:var(--sheet-head-bg); }
 .rp__rowhead{
-  width:9ch; background:var(--sheet-head-bg); text-align:left; white-space:nowrap;
-  font-size:var(--fs-2); font-weight:var(--fw-bold); color:var(--text-muted);
+  background:var(--sheet-head-bg); text-align:left; white-space:nowrap;
+  padding-left:var(--sp-2); font-size:var(--fs-1); font-weight:var(--fw-bold); color:var(--text-muted);
 }
-.rp__name{ display:block; font-size:var(--fs-3); font-weight:var(--fw-bold); color:var(--text); line-height:var(--lh-tight); }
+.rp__name{ display:block; font-size:var(--fs-2); font-weight:var(--fw-bold); color:var(--text); line-height:var(--lh-tight); }
 .rp__sub{ display:block; margin-top:2px; font-size:var(--fs-1); font-weight:var(--fw-normal); color:var(--text-muted); }
 .rp__unit{ color:var(--text-muted); }
+.rp__range{ font-size:var(--fs-1); }
+.rp__range--file{ font-weight:var(--fw-med); }        /* 変換元ファイルから取れた範囲 */
+.rp__range--params{ color:var(--accent-text); }        /* このツールの設定から */
+.rp__range--none{ color:var(--text-muted); }
 .rp__row--val td{ background:var(--surface-2); }
-.rp__val{ font-size:var(--fs-5); font-weight:var(--fw-bold); }
-.rp__val--text{ font-size:var(--fs-3); }
+/* 数値の途中で折り返すと読み違えるので、値・範囲・単位の欄は単語単位で折る */
+.rp__unit,.rp__range,.rp__val{ word-break:normal; overflow-wrap:break-word; }
+.rp__val{ font-size:var(--fs-3); font-weight:var(--fw-bold); }
+.rp__val--text{ font-size:var(--fs-2); }
 /* 仮の値であることが表からも分かるようにする（実データに差し替えたらこの装飾は外す） */
 .rp__sample{ border-bottom:1px dashed var(--warn); padding-bottom:1px; }
-.rp__judge .status{ font-size:var(--fs-1); }
+.rp__judge{ padding:var(--sp-1) 2px; }
+.rp__judge .status{ font-size:var(--fs-1); padding:1px 3px; gap:2px; max-width:100%; }
+.rp__judge .status svg{ width:10px; height:10px; }
 
 /* ---- 用紙の中のグラフ ---- */
 /* 最下部のグラフは残りの高さいっぱいまで伸びる（下限は --sheet-chart-h） */
@@ -83,6 +97,7 @@
   overflow:hidden;
 }
 .rp__chart canvas{ position:absolute; inset:0; display:block; }
+.reportbar__zoom{ display:flex; align-items:center; gap:var(--sp-2); align-self:center; }
 .rp__chart--na{
   display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-4);
   border-style:dashed; color:var(--text-muted); font-size:var(--fs-2);
@@ -106,7 +121,7 @@
    印刷（レポートの用紙だけを刷る）
    ============================================================ */
 @media print{
-  @page{ size:A4 landscape; margin:8mm; }
+  @page{ size:A4 portrait; margin:10mm; }
   .appbar,.rail,.tabs,.tabs__note,.verdict,.reportbar,.toast-area,.dropoverlay,dialog{ display:none !important; }
   html,body{ height:auto; background:#fff; }
   .app,.layout,.stage,.ws,.panel,.panel--report{
@@ -114,12 +129,14 @@
     overflow:visible !important; border:0 !important; box-shadow:none !important; padding:0 !important;
   }
   .ws__head{ display:none !important; }
+  .sheet-wrap{ display:block !important; overflow:visible !important; }
   .sheet{
-    width:auto; max-width:none; border:0; border-radius:0; box-shadow:none; overflow:visible;
-    padding:0; break-inside:avoid;
+    width:auto; height:auto; max-width:none; border:0; border-radius:0; box-shadow:none;
+    overflow:visible; padding:0; break-inside:avoid;
+    transform:none; margin-bottom:0;
   }
   .rp{ min-width:0; }
-  .rp__chart{ height:80mm; border-color:var(--sheet-rule-strong); }
+  .rp__chart{ height:var(--sheet-print-chart-h); border-color:var(--sheet-rule-strong); }
   /* 画面用に描いたキャンバスを用紙の枠に合わせて伸縮させる */
   .rp__chart canvas{ width:100% !important; height:100% !important; }
   .sheet__note{ color:#444; }
