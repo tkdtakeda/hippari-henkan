@@ -102,8 +102,8 @@
 .rp td.rp__unit,.rp td.rp__range,.rp td.rp__val{ word-break:keep-all; overflow-wrap:break-word; }
 .rp__val{ font-size:var(--fs-3); font-weight:var(--fw-bold); }
 .rp__val--text{ font-size:var(--fs-2); }
-/* 仮の値であることが表からも分かるようにする（実データに差し替えたらこの装飾は外す） */
-.rp__sample{ border-bottom:1px dashed var(--warn); padding-bottom:1px; }
+/* 算出できなかった欄は、空白ではなく「算出不可」と書いて理由を title に持たせる */
+.rp__na{ font-size:var(--fs-1); font-weight:var(--fw-normal); color:var(--text-muted); }
 .rp__judge{ padding:var(--sp-1) 2px; }
 .rp__judge .status{ font-size:var(--fs-1); padding:1px 3px; gap:2px; max-width:100%; }
 .rp__judge .status svg{ width:10px; height:10px; }

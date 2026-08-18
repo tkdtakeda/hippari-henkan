@@ -21,8 +21,14 @@ const DEFAULT_PARAMS = {
   smoothingWindow: 5,         // 点   速度の移動平均窓
   smoothing: true,
   rampCheck: true,            // 応力増加速度の許容範囲チェックを行うか
-  rampMin: 2,                 // MPa/s
-  rampMax: 20,                // MPa/s
+  rampMin: 1.5,               // MPa/s
+  rampMax: 20.49,             // MPa/s
+  srateCheck: true,           // ひずみ速度の許容範囲チェックを行うか
+  srateMin: 0.00007,          // s⁻¹（ISO 6892-1 方式A のひずみ速度レンジ）
+  srateMax: 0.008,            // s⁻¹
+  crossCheck: true,           // 実績クロスヘッド変位速度の許容範囲チェックを行うか
+  crossMin: 0.02,             // mm/min ★仮置き（弾性域の速度。実際の基準値に置き換える）
+  crossMax: 6.0,              // mm/min ★仮置き
   auditOut: false,            // 変更履歴 (audit) も出力（vtav のみ）
 };
 const PARAM_META = [
@@ -37,9 +43,25 @@ const PARAM_META = [
   { key: "fracture_k1", label: "式① 急落倍率 k1", unit: "−", step: "0.5", min: 0, group: "破断・伸び" },
   { key: "fracture_k2", label: "式② 低荷重比 k2", unit: "× Fmax", step: "0.005", min: 0, group: "破断・伸び" },
   { key: "shimadzuPctOfMaxForce", label: "島津法 1 秒低下率", unit: "% of Fmax", step: "1", min: 0, group: "破断・伸び" },
-  { key: "rampMin", label: "応力増加速度 下限", unit: "MPa/s", step: "0.5", min: 0, group: "判定" },
-  { key: "rampMax", label: "応力増加速度 上限", unit: "MPa/s", step: "0.5", min: 0, group: "判定" },
+  { key: "rampMin", label: "応力増加速度 下限", unit: "MPa/s", step: "0.01", min: 0, group: "判定" },
+  { key: "rampMax", label: "応力増加速度 上限", unit: "MPa/s", step: "0.01", min: 0, group: "判定" },
+  { key: "srateMin", label: "ひずみ速度 下限", unit: "s⁻¹", step: "0.00001", min: 0, group: "判定" },
+  { key: "srateMax", label: "ひずみ速度 上限", unit: "s⁻¹", step: "0.00001", min: 0, group: "判定" },
+  { key: "crossMin", label: "クロス変位速度 下限", unit: "mm/min", step: "0.1", min: 0, group: "判定" },
+  { key: "crossMax", label: "クロス変位速度 上限", unit: "mm/min", step: "0.1", min: 0, group: "判定" },
 ];
+
+/**
+ * 値を許容範囲と突き合わせる（レポートの合否判定と判定バナーで共用）。
+ * 範囲が設定されていない・値が算出できていないときは「判定なし」を返す。
+ */
+function rangeCheck(value, lo, hi) {
+  if (!fin(lo) || !fin(hi) || !(hi > lo)) return { level: "na", label: "範囲未設定" };
+  if (!fin(value)) return { level: "na", label: "判定不可" };
+  return (value >= lo && value <= hi)
+    ? { level: "ok", label: "合格" }
+    : { level: "ng", label: "不合格" };
+}
 
 /* ───────────────── 数値ユーティリティ ───────────────── */
 function median(arr) {
@@ -171,6 +193,11 @@ function analyze(inp, P) {
       if (force[i] >= 0.05 * maxForce && force[i] <= 0.30 * maxForce) band.push(velocity[i]);
     }
     const vBase = median(band);
+    /* 弾性域の基準速度。実績クロスヘッド変位速度として報告・判定に使う */
+    A.vBase = fin(vBase) ? vBase : NaN;
+    A.vBaseBasis = fin(vBase)
+      ? `試験力が Fmax の 5〜30% にある区間の速度の中央値（${A.basis.velocity || "速度から算出"}）`
+      : "";
     let thr = P.velocityThreshold, thrWhy = `設定値 ${fmtNum(P.velocityThreshold, 1)} mm/min`;
     if (vBase >= 2.7 && vBase <= 3.3) { thr = 3.3; thrWhy = `弾性域の基準速度 ${fmtNum(vBase, 2)} mm/min → 試験速度 3 mm/min と判定`; }
     else if (vBase >= 5.4 && vBase <= 6.6) { thr = 6.6; thrWhy = `弾性域の基準速度 ${fmtNum(vBase, 2)} mm/min → 試験速度 6 mm/min と判定`; }
@@ -193,7 +220,10 @@ function analyze(inp, P) {
     }
   } else {
     A.yieldV = null;
+    A.vBase = NaN;
+    A.vBaseBasis = "";
     A.blocked.push({ what: "耐力（速度法）", why: "速度（時間・ストローク）が無いため検出できません" });
+    A.blocked.push({ what: "実績クロス変位速度", why: "速度（時間・ストローク）が無いため算出できません" });
   }
 
   /* --- 14.3 前提: 弾性直線域と勾配 slope --- */
@@ -401,17 +431,24 @@ function analyze(inp, P) {
   } else {
     checks.push({ level: "na", label: "弾性直線域の直線性", detail: "直線域を決定できないため未評価" });
   }
-  if (P.rampCheck) {
-    if (A.rampRate) {
-      const v = A.rampRate.value;
-      const inRange = v >= P.rampMin && v <= P.rampMax;
-      checks.push({
-        level: inRange ? "ok" : "ng", label: "応力増加速度",
-        detail: `${fmtNum(v, 2)} MPa/s（許容範囲 ${fmtNum(P.rampMin, 1)}〜${fmtNum(P.rampMax, 1)} MPa/s・設定値）`,
-      });
-    } else {
-      checks.push({ level: "na", label: "応力増加速度", detail: "算出できないため未評価" });
-    }
+  /* 速度まわりの 3 つは許容範囲との突き合わせで合否を出す（レポートの合否判定と同じ） */
+  const speedChecks = [
+    { on: P.rampCheck,  label: "応力増加速度", value: A.rampRate ? A.rampRate.value : NaN,
+      lo: P.rampMin, hi: P.rampMax, unit: "MPa/s", fmt: (v) => fmtNum(v, 2), fmtR: (v) => fmtNum(v, 2) },
+    { on: P.srateCheck, label: "ひずみ速度", value: A.strainRate1 ? A.strainRate1.value : NaN,
+      lo: P.srateMin, hi: P.srateMax, unit: "s⁻¹", fmt: (v) => fmtExp(v, 2), fmtR: (v) => fmtExp(v, 2) },
+    { on: P.crossCheck, label: "実績クロス変位速度", value: A.vBase,
+      lo: P.crossMin, hi: P.crossMax, unit: "mm/min", fmt: (v) => fmtNum(v, 2), fmtR: (v) => fmtNum(v, 2) },
+  ];
+  for (const c of speedChecks) {
+    if (!c.on) continue;
+    const r = rangeCheck(c.value, c.lo, c.hi);
+    checks.push({
+      level: r.level, label: c.label,
+      detail: r.level === "na"
+        ? `${r.label}（許容範囲 ${c.fmtR(c.lo)}〜${c.fmtR(c.hi)} ${c.unit}・設定値）`
+        : `${c.fmt(c.value)} ${c.unit}（許容範囲 ${c.fmtR(c.lo)}〜${c.fmtR(c.hi)} ${c.unit}・設定値）`,
+    });
   }
   const missing = [];
   if (!A.rm) missing.push("引張強さ Rm");
