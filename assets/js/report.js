@@ -14,50 +14,30 @@
 "use strict";
 
 /* ───────────────── 表の列（左から並ぶ順） ─────────────────
- * name      … 表の 1 行目「名前」
- * sub       … 名前の下に小さく添える補足（変換元ファイルでのラベル）
- * srcLabels … 変換元ファイルの結果ラベル候補（合格範囲・値の引き当てに使う）
- * unit      … 表の 2 行目「単位」。単位を持たない項目は "—"
- * range     … 表の 3 行目「合格範囲」の仮の値（ファイル／設定から取れないときに使う）
- * sample    … 表の 4 行目「測定値」の仮の値（次工程で解析結果に差し替える）
- * judge     … 表の 5 行目「合否判定」の仮の判定。null は判定の対象外
- * kind      … measure = 測定値 / spec = 試験片の属性（判定の対象外）
- * d         … ファイルから取れた合格範囲を表示するときの小数桁
- * w         … 表の列幅の重み（桁数の多い列を少し広くする）
- * exp       … 合格範囲を指数表記（1.23×10⁻⁴）で出す
+ * name  … 見出し 1 行目「名前」
+ * sub   … 見出し 2 行目「元データ名」（変換元ファイルでのラベル）
+ * unit  … 「単位」。単位を持たない項目は "—"
+ * sample… 「測定値」の仮の値（次工程で解析結果に差し替える）
+ * kind  … measure = 測定値 / spec = 試験片の寸法（合否判定の対象外）
+ * w     … 表の列幅の重み（桁数の多い列を少し広くする）
  *
  * name / sub の `|` は「ここでなら改行してよい」印（単語の途中では折り返さない）。
  * `_` の直後も改行してよい。どちらの印も表示には出ない。
+ *
+ * 合格範囲は変換元ファイルにも試験条件にも入っていないため、原則は空欄。
+ * 例外は応力増加速度で、このツールの設定（判定 › 許容範囲）を実値として出す。
  */
 const REPORT_COLS = [
-  { key: "force",  w: 1,    kind: "measure", name: "試験力",           sub: "最大点_試験力",
-    srcLabels: ["最大点_試験力", "最大点_Fm"],
-    unit: "N",      d: 0, range: "10,000 以上",        sample: "12,340",    judge: "ok" },
-  { key: "stress", w: 1,    kind: "measure", name: "引張強さ",         sub: "最大点_応力",
-    srcLabels: ["最大点_応力", "最大点_Rm"],
-    unit: "N/mm²",  d: 1, range: "270.0 〜 450.0",     sample: "412.7",     judge: "ok" },
-  { key: "elong",  w: 0.95, kind: "measure", name: "伸び",             sub: "破断点_変位|(ひずみ)",
-    srcLabels: ["破断点_変位(ひずみ)", "破断点_At"],
-    unit: "%",      d: 2, range: "20.00 以上",         sample: "23.45",     judge: "ok" },
-  { key: "young",  w: 1.15, kind: "measure", name: "弾性率",           sub: "弾性率_Standard",
-    srcLabels: ["弾性率_Standard"],
-    unit: "N/mm²",  d: 0, range: "180,000 〜 230,000", sample: "205,000",   judge: "ok" },
-  { key: "ramp",   w: 1,    kind: "measure", name: "応力|増加速度",     sub: "応力|増加速度",
-    srcLabels: ["応力増加速度"],
-    unit: "MPa/s",  d: 1, range: "2.0 〜 20.0",        sample: "9.82",      judge: "ok" },
-  { key: "srate",  w: 1.3,  kind: "measure", name: "ひずみ速度",       sub: "歪速度",
-    srcLabels: ["歪速度"],
-    unit: "s⁻¹",    d: 5, exp: true, range: "2.5×10⁻⁴ 以下", sample: "1.23×10⁻⁴", judge: "warn" },
-  { key: "cross",  w: 1.1,  kind: "measure", name: "実績クロス|変位速度", sub: "実績|クロスヘッド|変異速度",
-    srcLabels: ["実績クロスヘッド変異速度", "クロスヘッド変異速度"],
-    unit: "mm/min", d: 2, range: "2.40 〜 3.60",       sample: "3.00",      judge: "ok" },
-  { key: "thick",  w: 0.9,  kind: "spec",    name: "厚さ",             sub: "試験条件", srcLabels: [],
-    unit: "mm",     d: 3, range: null,                 sample: "1.600",     judge: null },
-  { key: "width",  w: 0.9,  kind: "spec",    name: "幅",               sub: "試験条件", srcLabels: [],
-    unit: "mm",     d: 2, range: null,                 sample: "25.00",     judge: null },
+  { key: "force",  w: 1,    kind: "measure", name: "試験力",           sub: "最大点_試験力",       unit: "N",      sample: "12,340" },
+  { key: "stress", w: 1,    kind: "measure", name: "引張強さ",         sub: "最大点_応力",         unit: "N/mm²",  sample: "412.7" },
+  { key: "elong",  w: 0.95, kind: "measure", name: "伸び",             sub: "破断点_変位|(ひずみ)", unit: "%",     sample: "23.45" },
+  { key: "young",  w: 1.15, kind: "measure", name: "弾性率",           sub: "弾性率_Standard",     unit: "N/mm²",  sample: "205,000" },
+  { key: "ramp",   w: 1,    kind: "measure", name: "応力|増加速度",     sub: "応力|増加速度",       unit: "MPa/s",  sample: "9.82" },
+  { key: "srate",  w: 1.15, kind: "measure", name: "ひずみ速度",       sub: "歪速度",              unit: "s⁻¹",    sample: "1.23×10⁻⁴" },
+  { key: "cross",  w: 1.1,  kind: "measure", name: "実績クロス|変位速度", sub: "実績|クロスヘッド|変異速度", unit: "mm/min", sample: "3.00" },
+  { key: "thick",  w: 0.9,  kind: "spec",    name: "厚さ",             sub: "試験条件",            unit: "mm",     sample: "1.600" },
+  { key: "width",  w: 0.9,  kind: "spec",    name: "幅",               sub: "試験条件",            unit: "mm",     sample: "25.00" },
 ];
-
-const JUDGE_TEXT = { ok: "合格", warn: "要確認", ng: "不合格" };
 
 /** 単語の途中では折り返さない。`_` の直後と `|` の位置だけ改行を許す（`|` は表示しない）。 */
 function labelHtml(s) {
@@ -65,25 +45,19 @@ function labelHtml(s) {
 }
 
 /**
- * 合格範囲を決める。出どころは 3 通りあり、画面でも見分けられるようにする。
- *   file   … 変換元ファイル（.vtav の値アンカー直後の 下限/上限）★実ファイルでの裏取りは未了
- *   params … このツールの設定（判定 › 応力増加速度の許容範囲）
- *   sample … 配置確認用の仮の値
+ * 合格範囲。規格値はどこにも入っていないので、原則は空欄のまま置いておく。
+ *   params … このツールの設定（判定 › 応力増加速度の許容範囲）だけは実値がある
+ *   none   … 規格値なし（空欄）
  */
 function reportRange(e, col) {
-  if (col.range === null && !col.srcLabels.length) return { text: "—", src: "none" };
-  const row = (e.results || []).find((r) => col.srcLabels.includes(r.label) && fin(r.lo) && fin(r.hi));
-  if (row) {
-    const f = (v) => (col.exp ? fmtExp(v, 2) : fmtNum(v, col.d));
-    return { text: `${f(row.lo)} 〜 ${f(row.hi)}`, src: "file" };
-  }
   if (col.key === "ramp") {
     const P = state.params;
     return P.rampCheck
-      ? { text: `${fmtNum(P.rampMin, 1)} 〜 ${fmtNum(P.rampMax, 1)}`, src: "params" }
-      : { text: "判定しない", src: "params" };
+      ? { text: `${fmtNum(P.rampMin, 1)} 〜 ${fmtNum(P.rampMax, 1)}`, src: "params",
+          why: "設定 › 判定 の許容範囲（このツールが実際に使う値）" }
+      : { text: "判定しない", src: "params", why: "設定 › 判定 で応力増加速度のチェックを外しています" };
   }
-  return { text: col.range, src: "sample" };
+  return { text: "—", src: "none", why: "規格値が変換元ファイルにも試験条件にも無いため空欄" };
 }
 
 /* ───────────────── ファイル名の読み解き ─────────────────
@@ -198,20 +172,21 @@ function reportSheetHtml(e) {
   const cols = `<colgroup><col style="width:9%">${
     REPORT_COLS.map((c) => `<col style="width:${(91 * (c.w || 1) / wSum).toFixed(2)}%">`).join("")
   }</colgroup>`;
-  const head = REPORT_COLS.map((c) =>
-    `<th scope="col"><span class="rp__name">${labelHtml(c.name)}</span><span class="rp__sub">${labelHtml(c.sub)}</span></th>`).join("");
+  /* 見出しは「名前」と「元データ名」の 2 行に分ける。1 つのセルに 2 段を詰めると
+     行数の違いで文字の高さが揃わず、横並びがガタガタに見えるため。 */
+  const names = REPORT_COLS.map((c) => `<th scope="col" class="rp__name">${labelHtml(c.name)}</th>`).join("");
+  const subs = REPORT_COLS.map((c) => `<td class="rp__sub">${labelHtml(c.sub)}</td>`).join("");
   const units = REPORT_COLS.map((c) => `<td class="rp__unit">${esc(c.unit)}</td>`).join("");
   const ranges = REPORT_COLS.map((c) => {
     const r = reportRange(e, c);
-    const title = { file: "変換元ファイルから取得（未検証）", params: "設定 › 判定 の許容範囲", sample: "配置確認用の仮の値", none: "判定の対象外" }[r.src];
-    return `<td class="rp__range rp__range--${r.src}">${
-      r.src === "sample" ? `<span class="rp__sample" title="${esc(title)}">${esc(r.text)}</span>`
-                         : `<span title="${esc(title)}">${esc(r.text)}</span>`}</td>`;
+    return `<td class="rp__range rp__range--${r.src}"><span title="${esc(r.why)}">${esc(r.text)}</span></td>`;
   }).join("");
   const vals = REPORT_COLS.map((c) =>
     `<td class="rp__val${c.kind === "spec" ? " rp__val--text" : ""}"><span class="rp__sample" title="配置確認用の仮の値">${esc(c.sample)}</span></td>`).join("");
+  /* 合格範囲が無いので判定もしない。寸法は元から判定の対象外。 */
   const judges = REPORT_COLS.map((c) => `<td class="rp__judge">${
-    c.judge ? statusChip(c.judge === "ng" ? "err" : c.judge, JUDGE_TEXT[c.judge]) : statusChip("na", "対象外")
+    c.kind === "spec" ? statusChip("na", "対象外")
+      : `<span title="合格範囲が無いため判定していません">—</span>`
   }</td>`).join("");
 
   const meta = reportMeta(e).map(([k, v, why]) =>
@@ -236,18 +211,21 @@ function reportSheetHtml(e) {
       <h3 class="sheet__h">試験結果</h3>
       <table class="rp">
         ${cols}
-        <thead><tr><th scope="row" class="rp__rowhead">名前</th>${head}</tr></thead>
+        <thead>
+          <tr><th scope="row" class="rp__rowhead">名前</th>${names}</tr>
+          <tr class="rp__row--sub"><th scope="row" class="rp__rowhead">元データ名</th>${subs}</tr>
+        </thead>
         <tbody>
           <tr><th scope="row" class="rp__rowhead">単位</th>${units}</tr>
           <tr><th scope="row" class="rp__rowhead">合格範囲</th>${ranges}</tr>
           <tr class="rp__row--val"><th scope="row" class="rp__rowhead">測定値<small>（仮）</small></th>${vals}</tr>
-          <tr><th scope="row" class="rp__rowhead">合否判定<small>（仮）</small></th>${judges}</tr>
+          <tr><th scope="row" class="rp__rowhead">合否判定</th>${judges}</tr>
         </tbody>
       </table>
-      <p class="sheet__note"><b>「（仮）」の行と破線の下線が付いた値は配置確認用の仮の値</b>です（実データとの結合は次の工程。
-        合否判定はまだ何とも比べていません）。
-        合格範囲は ①変換元ファイル（.vtav の下限・上限／未検証）→ ②このツールの設定（応力増加速度）→ ③仮の値 の順に決めます。
-        マウスを重ねるとその値の出どころが出ます。</p>
+      <p class="sheet__note"><b>「測定値（仮）」の行は配置確認用の仮の値</b>です（実データとの結合は次の工程）。
+        <b>合格範囲</b>は規格値が変換元ファイルにも試験条件にも入っていないため空欄にしています
+        （応力増加速度だけは、このツールの設定 › 判定 の許容範囲を出します）。合格範囲が無い項目は合否判定もしません。
+        マウスを重ねるとその欄の出どころが出ます。</p>
     </section>
 
     <section class="sheet__block sheet__block--chart">

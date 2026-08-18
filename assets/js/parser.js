@@ -113,26 +113,6 @@ function nearestUnit(unitsSorted, voff) {
  * 値アンカー ([\x01-\x0f])(-?[0-9][0-9.\-]{0,14})\x00[\x01\x02]\x00\x00\x00 を
  * バイト列上で直接走査する（group1 の長さ整合チェック込み ＝ Python 版と等価）。
  */
-/**
- * 値アンカーの直後 8 バイト（float32 LE × 2）を「合否判定の下限・上限」として読む。
- *
- * 出どころ: 1.py 冒頭の書式メモ
- *   <1byte長さ><値ASCII> 00 [01|02] 00 00 00 <float32 下限> <float32 上限>
- * 1.py 本体も仕様書もこの 8 バイトは読み捨てているため、**実ファイルでの裏取りは未了**。
- * 明らかに範囲として成立しない組み合わせ（非有限・下限≥上限・0/0・桁が異常）は
- * 「範囲なし」として捨て、誤った合格範囲を表示しないようにする。
- */
-function anchorLimits(d, at) {
-  if (at + 8 > d.length) return {};
-  const dv = new DataView(d.buffer, d.byteOffset + at, 8);
-  const lo = dv.getFloat32(0, true), hi = dv.getFloat32(4, true);
-  if (!isFinite(lo) || !isFinite(hi)) return {};
-  if (lo === 0 && hi === 0) return {};                 // 判定を設定していない項目
-  if (!(hi > lo)) return {};
-  if (Math.abs(lo) > 1e9 || Math.abs(hi) > 1e9) return {};
-  return { lo, hi };
-}
-
 function scanVtavAnchors(d) {
   const hits = [];
   const n = d.length;
@@ -157,14 +137,14 @@ function scanVtavAnchors(d) {
     if (!ok) continue;
     let s = "";
     for (let q = i + 1; q < end; q++) s += String.fromCharCode(d[q]);
-    hits.push({ off: i, val: s, na: false, ...anchorLimits(d, end + 5) });
+    hits.push({ off: i, val: s, na: false });
   }
   // 未算出 (N/A) アンカー \x03 "-.-" \x00 [\x01\x02] \x00\x00\x00
   for (let i = 0; i + 8 < n; i++) {
     if (d[i] !== 0x03 || d[i + 1] !== 0x2D || d[i + 2] !== 0x2E || d[i + 3] !== 0x2D) continue;
     if (d[i + 4] !== 0x00 || (d[i + 5] !== 0x01 && d[i + 5] !== 0x02) ||
         d[i + 6] !== 0x00 || d[i + 7] !== 0x00 || d[i + 8] !== 0x00) continue;
-    hits.push({ off: i, val: "N/A", na: true, ...anchorLimits(d, i + 9) });
+    hits.push({ off: i, val: "N/A", na: true });
   }
   hits.sort((a, b) => a.off - b.off);
   return hits;
@@ -190,10 +170,7 @@ function parseResultsVtav(data, tokens) {
     if (!pick) continue;
     if (seen.has(pick.off)) continue;
     seen.add(pick.off);
-    res.push({
-      label: pick.text, unit: nearestUnit(units, h.off), value: h.val, param: "",
-      lo: fin(h.lo) ? h.lo : null, hi: fin(h.hi) ? h.hi : null,
-    });
+    res.push({ label: pick.text, unit: nearestUnit(units, h.off), value: h.val, param: "" });
   }
   return res;
 }

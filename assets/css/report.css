@@ -60,7 +60,11 @@
 .sheet__note{ font-size:var(--fs-1); color:var(--text-muted); line-height:var(--lh); }
 .sheet__note b{ color:var(--text); }
 
-/* ---- 結果表（列＝項目 / 行＝名前・単位・合格範囲・測定値・合否判定） ---- */
+/* ---- 結果表 ----
+   列＝項目、行＝名前・元データ名・単位・合格範囲・測定値・合否判定。
+   見出しを 1 セルに 2 段詰めると行数の違いで文字の高さが揃わず、横に並べたとき
+   ガタガタに見える。そこで「名前」と「元データ名」を別々の行にして、
+   段の境目（＝罫線）が全列で一直線に通るようにしている。 */
 .rp{
   width:100%; min-width:var(--sheet-table-min); border-collapse:collapse; table-layout:fixed;
   font-variant-numeric:tabular-nums;
@@ -69,22 +73,28 @@
   border:1px solid var(--sheet-rule); padding:var(--sp-1) 3px; text-align:center; vertical-align:middle;
   font-size:var(--fs-2); word-break:break-word;
 }
-.rp thead th{ background:var(--sheet-head-bg); }
+.rp thead th,.rp thead td{ background:var(--sheet-head-bg); }
+/* 名前は各セルの下端で、元データ名は上端でそろえる（段の境目に文字を寄せる） */
+.rp thead .rp__name{ vertical-align:bottom; }
+.rp thead .rp__sub{ vertical-align:top; }
+.rp__row--sub td{ border-top:0; padding-top:0; }
+.rp thead .rp__name{ border-bottom:0; padding-bottom:1px; }
 .rp__rowhead{
   background:var(--sheet-head-bg); text-align:left; white-space:nowrap;
   padding-left:var(--sp-2); font-size:var(--fs-1); font-weight:var(--fw-bold); color:var(--text-muted);
 }
 .rp__rowhead small{ font-size:var(--fs-0); font-weight:var(--fw-normal); }
-/* 名前と元ラベルは単語の途中で折り返さない（改行できるのは <wbr> を入れた所だけ）。
-   狭い列に収めるため、元ラベルは一段小さい文字にする。 */
-.rp__name,.rp__sub{ word-break:keep-all; overflow-wrap:normal; hyphens:none; }
-.rp__name{ display:block; font-size:var(--fs-2); font-weight:var(--fw-bold); color:var(--text); line-height:var(--lh-tight); }
-.rp__sub{ display:block; margin-top:2px; font-size:var(--fs-0); font-weight:var(--fw-normal); color:var(--text-muted); line-height:var(--lh-tight); }
+/* 名前と元データ名は単語の途中で折り返さない（改行できるのは <wbr> を入れた所だけ）。
+   狭い列に収めるため、元データ名は一段小さい文字にする。 */
+/* `.rp th,.rp td` の指定に勝てるよう、セレクタを th / td 付きで書く */
+.rp th.rp__name,.rp td.rp__sub{ word-break:keep-all; overflow-wrap:normal; hyphens:none; }
+.rp__name{ font-size:var(--fs-2); font-weight:var(--fw-bold); color:var(--text); line-height:var(--lh-tight); }
+.rp__sub{ font-size:var(--fs-0); font-weight:var(--fw-normal); color:var(--text-muted); line-height:var(--lh-tight); }
 .rp__unit{ color:var(--text-muted); }
 .rp__range{ font-size:var(--fs-1); }
-.rp__range--file{ font-weight:var(--fw-med); }        /* 変換元ファイルから取れた範囲 */
-.rp__range--params{ color:var(--accent-text); }        /* このツールの設定から */
+.rp__range--params{ color:var(--accent-text); font-weight:var(--fw-med); }  /* このツールの設定から */
 .rp__range--none{ color:var(--text-muted); }
+.rp__judge{ color:var(--text-muted); }
 .rp__row--val td{ background:var(--surface-2); }
 /* 数値や「以上」の途中で折り返すと読み違えるので、値・範囲・単位も単語単位で折る
    （どうしても入らないときだけ overflow-wrap で逃がす）。
