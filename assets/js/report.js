@@ -51,8 +51,6 @@ const REPORT_COLS = [
   { key: "cross",  w: 1.1,  kind: "measure", name: "実績クロス|変位速度", sub: "実績|クロスヘッド|変異速度",
     srcLabels: ["実績クロスヘッド変異速度", "クロスヘッド変異速度"],
     unit: "mm/min", d: 2, range: "2.40 〜 3.60",       sample: "3.00",      judge: "ok" },
-  { key: "spec",   w: 0.95, kind: "spec",    name: "試験片名",         sub: "試験条件", srcLabels: [],
-    unit: "—",      d: 0, range: null,                 sample: "SPCC-1",    judge: null },
   { key: "thick",  w: 0.9,  kind: "spec",    name: "厚さ",             sub: "試験条件", srcLabels: [],
     unit: "mm",     d: 3, range: null,                 sample: "1.600",     judge: null },
   { key: "width",  w: 0.9,  kind: "spec",    name: "幅",               sub: "試験条件", srcLabels: [],
@@ -89,21 +87,46 @@ function reportRange(e, col) {
 }
 
 /* ───────────────── ファイル名の読み解き ─────────────────
- * ファイル名は  年月日_連番_ロットNo._試験方向[_採取位置…]  に分解できる。
- * 5 つ目より後ろは採取位置として扱い、下の記号は既知のものとして印を付ける。
+ * 構造:  年月日_連番_ロットNo._[採取位置]試験方向 . 拡張子
+ *   - 区切りは `_`。ロット No. までで 3 個なので、必ず 4 フィールドになる。
+ *   - 第 4 フィールドにはハイフンや数字が入り得るが `_` は入らない。
+ *
+ * 第 4 フィールドの分解（末尾から試験方向を切り出し、残りが採取位置）:
+ *   1. 末尾が LT か → 試験方向 = LT      ★必ず LT を L より先に見る
+ *   2. そうでなく末尾が L か → 試験方向 = L
+ *   3. 残りが採取位置。末尾のハイフンだけ取り除く（BOT- → BOT）。
+ *      内側のハイフンは残す（1-10D はそのまま）。残りが空なら採取位置なし。
+ *
+ * 例: LT → 方向 LT・位置なし ／ L → 方向 L・位置なし
+ *     BOT-L → 方向 L・位置 BOT ／ 1-10DL → 方向 L・位置 1-10D
  */
-const POSITION_CODES = new Set(["U", "D", "S", "2", "E", "C", "OS", "DS"]);
+const TEST_DIRECTIONS = ["LT", "L"];     // 長い方から見る（LT を L より先に）
+function splitPosDir(field) {
+  const raw = String(field || "").trim();
+  if (!raw) return { pos: null, dir: null, ok: false };
+  for (const d of TEST_DIRECTIONS) {
+    if (raw.toUpperCase().endsWith(d)) {
+      const rest = raw.slice(0, raw.length - d.length).replace(/-+$/, "");
+      return { pos: rest || null, dir: d, ok: true };
+    }
+  }
+  /* L / LT で終わらない＝仕様外。捨てずに採取位置として出し、方向は不明とする。 */
+  return { pos: raw.replace(/-+$/, "") || null, dir: null, ok: false };
+}
 function parseFileTitle(e) {
-  const seg = String(e && e.base ? e.base : "").split("_").map((x) => x.trim()).filter((x) => x !== "");
-  const extra = seg.slice(4);
+  const seg = String(e && e.base ? e.base : "").split("_");
+  /* 第 4 フィールドに `_` は入らない決まりだが、万一多く割れても捨てずに繋ぎ直す */
+  const field4 = seg.length > 3 ? seg.slice(3).join("_") : "";
+  const { pos, dir, ok } = splitPosDir(field4);
   return {
     segments: seg,
     date: seg[0] || null,
     seq: seg[1] || null,
     lot: seg[2] || null,
-    dir: seg[3] || null,
-    pos: extra.length ? extra.join("・") : null,
-    posKnown: extra.length > 0 && extra.every((x) => POSITION_CODES.has(x.toUpperCase())),
+    field4: field4 || null,
+    pos, dir,
+    dirOk: ok,
+    shape: seg.length === 4,          // 想定どおり 4 フィールドに割れたか
   };
 }
 /** ロット No. はファイル名から。取れなければ試験条件、それも無ければファイル名全体。 */
@@ -123,11 +146,15 @@ const reportTitle = (e) => (e && e.reportTitle) || defaultReportTitle(e);
 function fileTitleParts(e) {
   const t = parseFileTitle(e);
   const item = (label, v) => `<span class="badge${v ? "" : " is-missing"}">${esc(label)} <b>${v ? esc(v) : "（なし）"}</b></span>`;
+  const warn = !t.shape
+    ? statusChip("warn", `${t.segments.length} 個に割れました（_ は 3 個の想定）`)
+    : (!t.dirOk ? statusChip("warn", "末尾が L / LT ではありません") : "");
   return `<div class="reportbar__parts">
     <span class="field__label">ファイル名の読み解き</span>
-    ${item("年月日", t.date)}${item("連番", t.seq)}${item("ロットNo.", t.lot)}${item("試験方向", t.dir)}${item("採取位置", t.pos)}
-    <span class="reportbar__hint">区切りは <b class="mono">_</b>（年月日_連番_ロットNo._試験方向_採取位置…）。
-      採取位置の既知の記号: <b class="mono">${[...POSITION_CODES].join(" ")}</b></span>
+    ${item("年月日", t.date)}${item("連番", t.seq)}${item("ロットNo.", t.lot)}${item("採取位置", t.pos)}${item("試験方向", t.dir)}
+    ${warn}
+    <span class="reportbar__hint"><b class="mono">年月日_連番_ロットNo._[採取位置]試験方向</b>
+      （試験方向は末尾の <b class="mono">LT</b> / <b class="mono">L</b>。残りが採取位置で、末尾のハイフンだけ落とします）</span>
   </div>`;
 }
 
@@ -147,13 +174,14 @@ function reportMeta(e) {
     : null;
 
   const t = parseFileTitle(e);
-  const fromName = "ファイル名（年月日_連番_ロットNo._試験方向）から読み取り";
+  const fromName = "ファイル名（年月日_連番_ロットNo._[採取位置]試験方向）から読み取り";
+  /* 採取位置は「あるときだけ」出す（第 4 フィールドが L / LT だけなら項目ごと出さない） */
   return [
     ["ロットNo.", reportLot(e), t.lot ? fromName : "ファイル名から読み取れないため試験条件／ファイル名で代用"],
-    ["試験方向", t.dir, t.dir ? fromName : "ファイル名の 4 つ目が無いため不明"],
-    ["採取位置", t.pos, t.pos
-      ? `ファイル名の 5 つ目以降${t.posKnown ? "（既知の記号）" : "（既知でない記号を含む）"}`
-      : "ファイル名に 5 つ目以降が無いため不明"],
+    ["試験方向", t.dir, t.dir
+      ? `${fromName}／第 4 フィールド「${t.field4}」の末尾`
+      : `第 4 フィールド${t.field4 ? `「${t.field4}」` : ""}が L / LT で終わらないため不明`],
+    ...(t.pos ? [["採取位置", t.pos, `${fromName}／第 4 フィールド「${t.field4}」から試験方向を除いた残り`]] : []),
     ["試験日", pick("試験日") || pick("作成日")],
     ["試験片形状", pick("試験片形状")],
     ["厚さ × 幅", dim("厚さ") && dim("幅") ? `${dim("厚さ")} × ${dim("幅")}` : dim("直径") ? `φ ${dim("直径")}` : null],
