@@ -350,9 +350,17 @@ function reportSheetHtml(e) {
     <section class="sheet__block sheet__block--chart">
       <h3 class="sheet__h">応力 － 変位（伸び）　全体像</h3>
       ${plot}
-      <p class="sheet__note">全体像のため常に全範囲を表示します（拡大して見るときは「単票 › 線図」タブ、または線図の「最大化」を使います）。${extStallNote(e)}</p>
+      <p class="sheet__note">全体像のため常に全範囲を表示します（拡大して見るときは「単票 › 線図」タブ、または線図の「最大化」を使います）。${breakMarkNote(e)}${extStallNote(e)}</p>
     </section>
   </div>`;
+}
+
+/** グラフの × が何を指しているかを用紙に書く */
+function breakMarkNote(e) {
+  const f = fileValue(e, { srcLabels: ["破断点_変位(ひずみ)", "破断点_At"] });
+  if (!f) return "";
+  return ` <b>×</b> は変換元ファイルの「${esc(f.label)}」の位置（伸び ${fmtNum(f.value, 2)} %`
+    + ` ＝ 変位 ${fmtNum((f.value / 100) * state.params.gaugeLength, 3)} mm・ゲージ長 ${fmtNum(state.params.gaugeLength, 1)} mm で換算）です。`;
 }
 
 /**
@@ -425,6 +433,27 @@ function reportHtml(e) {
   return shell(`${bar}<div class="sheet-wrap">${reportSheetHtml(e)}</div>`, meta);
 }
 
+/**
+ * 変換元ファイルの破断点を、用紙のグラフ（応力 － 変位）に置く座標へ直す。
+ * ファイルの値は伸び [%] なので、変位 [mm] = 伸び ÷ 100 × ゲージ長。
+ * 応力は、その変位にいちばん近い測定点の値を使う（線の上に印が乗るように）。
+ */
+function fileBreakPoint(e, A) {
+  const f = fileValue(e, { srcLabels: ["破断点_変位(ひずみ)", "破断点_At"] });
+  if (!f || !A || !A.series.displacement || !A.series.stress) return null;
+  const x = (f.value / 100) * state.params.gaugeLength;
+  if (!fin(x)) return null;
+  const dsp = A.series.displacement, str = A.series.stress;
+  let bi = -1, bd = Infinity;
+  for (let i = 0; i < dsp.length; i++) {
+    if (!fin(dsp[i]) || !fin(str[i])) continue;
+    const d = Math.abs(dsp[i] - x);
+    if (d < bd) { bd = d; bi = i; }
+  }
+  if (bi < 0) return null;
+  return { x, y: str[bi], strain: f.value, label: f.label, index: bi, gap: bd };
+}
+
 /* ───────────────── 用紙の表示倍率（全体表示 / 原寸） ───────────────── */
 let reportRO = null;
 /** 器に入る倍率を求めて --sheet-scale に入れる。原寸のときは 1 のまま。 */
@@ -465,10 +494,17 @@ function mountReportChart(e) {
     series: [{ ...base, color: cssVar("--chart-line"), width: 1.6, primary: true }],
     markers: [], bands: [],
   };
-  /* 全体像なので注釈は最大点だけ。破断点の決め方はまだ試験段階なので用紙には出さない。 */
+  /* 注釈は 最大点 Rm と、変換元ファイルの破断点だけ。
+     破断点はこのツールの検出（試験段階）ではなく、ファイルの 破断点_変位(ひずみ) を使う。
+     ファイルの値はひずみ [%] なので、X 軸（変位 mm）へは ゲージ長で戻して置く。 */
   const at = (i) => (i != null && A.series.displacement ? A.series.displacement[i] : NaN);
   if (A.rm && fin(at(A.rm.index))) {
     spec.markers.push({ x: at(A.rm.index), y: A.rm.value, shape: "circle", color: cssVar("--chart-line-2"), label: "Rm" });
+  }
+  const brk = fileBreakPoint(e, A);
+  if (brk) {
+    spec.markers.push({ x: brk.x, y: brk.y, shape: "x", color: cssVar("--chart-fracture"),
+      label: `破断 ${fmtNum(brk.strain, 2)} %` });
   }
 
   const c = new LineChart(host, { interactive: false });   // 用紙の中は常に全体表示（操作しない）
