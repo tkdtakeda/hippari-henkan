@@ -92,7 +92,8 @@
 .rp__sub{ font-size:var(--fs-0); font-weight:var(--fw-normal); color:var(--text-muted); line-height:var(--lh-tight); }
 .rp__unit{ color:var(--text-muted); }
 .rp__range{ font-size:var(--fs-1); }
-.rp__range--params{ color:var(--accent-text); font-weight:var(--fw-med); }  /* このツールの設定から */
+.rp__range--file{ color:var(--text); font-weight:var(--fw-med); }          /* 変換元ファイルから */
+.rp__range--params{ color:var(--accent-text); font-weight:var(--fw-med); }  /* 控え（設定）から */
 .rp__range--none{ color:var(--text-muted); }
 .rp__judge{ color:var(--text-muted); }
 .rp__row--val td{ background:var(--surface-2); }

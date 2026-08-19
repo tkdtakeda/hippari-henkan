@@ -28,39 +28,32 @@
  * `_` の直後も改行してよい。どちらの印も表示には出ない。
  */
 const REPORT_COLS = [
-  { key: "force",  w: 1,    kind: "measure", name: "試験力",           sub: "最大点_試験力",
+  { key: "force", why: (e, A) => (A && A.rm ? A.rm.basis : ""),  w: 1,    kind: "measure", name: "試験力",           sub: "最大点_試験力",
     unit: "N",      d: 0, na: "試験力",
     get: (e, A) => (A && A.max && fin(A.max.force) ? A.max.force : null) },
-  { key: "stress", w: 1,    kind: "measure", name: "引張強さ",         sub: "最大点_応力",
+  { key: "stress", why: (e, A) => (A && A.rm ? A.rm.basis : ""), w: 1,    kind: "measure", name: "引張強さ",         sub: "最大点_応力",
     unit: "N/mm²",  d: 1, na: "応力",
     get: (e, A) => (A && A.rm ? A.rm.value : null) },
-  { key: "elong",  w: 0.95, kind: "measure", name: "伸び",             sub: "破断点_変位|(ひずみ)",
+  { key: "elong", why: (e, A) => (A && A.elongation ? `${A.elongation.method}／${A.elongation.basis}` : ""),  w: 0.95, kind: "measure", name: "伸び",             sub: "破断点_変位|(ひずみ)",
     unit: "%",      d: 2, na: "伸び",
     get: (e, A) => (A && A.elongation ? A.elongation.value : null) },
-  { key: "young",  w: 1.15, kind: "measure", name: "弾性率",           sub: "弾性率_Standard",
-    unit: "N/mm²",  d: 0, na: "弾性勾配",
+  { key: "young", why: (e, A) => (A && A.linear ? `弾性直線域（第 ${A.linear.startIdx + 1}〜${A.linear.cutoffIdx + 1} 点）の勾配 × 100` : ""),  w: 1.15, kind: "measure", name: "弾性率",           sub: "弾性率_Standard",
+    unit: "N/mm²",  d: 0, na: "弾性勾配", judge: "young",
     get: (e, A) => (A && A.youngs ? A.youngs.nmm2 : null) },
-  { key: "ramp",   w: 1,    kind: "measure", name: "応力|増加速度",     sub: "応力|増加速度",
+  { key: "ramp", why: (e, A) => (A && A.rampRate ? A.rampRate.basis : ""),   w: 1,    kind: "measure", name: "応力|増加速度",     sub: "応力|増加速度",
     unit: "MPa/s",  d: 2, na: "応力増加速度", judge: "ramp",
     get: (e, A) => (A && A.rampRate ? A.rampRate.value : null) },
-  { key: "srate",  w: 1.15, kind: "measure", name: "ひずみ速度",       sub: "歪速度",
+  { key: "srate", why: (e, A) => (A && A.strainRate1 ? A.strainRate1.basis : ""),  w: 1.15, kind: "measure", name: "ひずみ速度",       sub: "歪速度",
     unit: "s⁻¹",    exp: true, na: "ひずみ", judge: "srate",
     get: (e, A) => (A && A.strainRate1 ? A.strainRate1.value : null) },
-  { key: "cross",  w: 1.1,  kind: "measure", name: "実績クロス|変位速度", sub: "実績|クロスヘッド|変異速度",
-    unit: "mm/min", d: 2, na: "速度", judge: "cross",
-    get: (e, A) => (A && fin(A.vBase) ? A.vBase : null) },
+  { key: "cross", why: (e, A) => (A ? A.vPlasticBasis || "" : ""),  w: 1.1,  kind: "measure", name: "実績クロス|変位速度", sub: "実績|クロスヘッド|変異速度",
+    unit: "mm/min", d: 2, na: "実績クロス変位速度", judge: "cross",
+    get: (e, A) => (A && fin(A.vPlastic) ? A.vPlastic : null) },
   { key: "thick",  w: 0.9,  kind: "spec",    name: "厚さ",             sub: "試験条件",
-    unit: "mm",     d: 3, get: (e) => dimOf(e, "厚さ") },
+    unit: "mm",     d: 3, get: (e) => dimOf(e, "厚さ"), why: (e) => dimWhy(e, "厚さ") },
   { key: "width",  w: 0.9,  kind: "spec",    name: "幅",               sub: "試験条件",
-    unit: "mm",     d: 2, get: (e) => dimOf(e, "幅") },
+    unit: "mm",     d: 2, get: (e) => dimOf(e, "幅"), why: (e) => dimWhy(e, "幅") },
 ];
-
-/* 許容範囲を持つ項目（値はすべて 設定 › 判定 から。JSON で書き出し／読み込みできる） */
-const JUDGE_RANGES = {
-  ramp:  { on: "rampCheck",  lo: "rampMin",  hi: "rampMax" },
-  srate: { on: "srateCheck", lo: "srateMin", hi: "srateMax" },
-  cross: { on: "crossCheck", lo: "crossMin", hi: "crossMax" },
-};
 
 /** 単語の途中では折り返さない。`_` の直後と `|` の位置だけ改行を許す（`|` は表示しない）。 */
 function labelHtml(s) {
@@ -83,6 +76,13 @@ function dimOf(e, key) {
   return isFinite(v) ? v : null;
 }
 
+/** 寸法の出どころ */
+function dimWhy(e, key) {
+  const o = e.areaOverride || {};
+  const manual = o.mode === "plate" && ((key === "厚さ" && fin(o.t)) || (key === "幅" && fin(o.w)));
+  return manual ? "解析タブの「断面積 A とゲージ長」で手入力した値" : "変換元ファイルの試験条件から";
+}
+
 /** 算出できなかった理由を解析結果から拾う */
 function naWhy(A, word) {
   if (!A) return "解析できていないため算出していません";
@@ -94,20 +94,33 @@ function naWhy(A, word) {
 const reportValue = (e, col) => col.get(e, e.analysis);
 
 /**
- * 合格範囲。許容範囲を持つのは速度まわりの 3 項目だけで、値は 設定 › 判定 から取る。
- * それ以外は規格値がどこにも無いので空欄のままにする。
+ * 合格範囲。解析が決めた A.judge をそのまま読む（判定バナーと同じ範囲）。
+ *   file   … 変換元ファイルの合格範囲レコードから抽出（別紙仕様）
+ *   params … ファイルに無いときの控え（応力増加速度だけ・設定 › 判定）
+ * どちらも無い項目は空欄にして、合否判定もしない。
  */
 function reportRange(e, col) {
-  const spec = JUDGE_RANGES[col.judge];
-  if (!spec) return { text: "—", src: "none", why: "規格値が変換元ファイルにも試験条件にも無いため空欄" };
-  const P = state.params;
-  if (!P[spec.on]) {
-    return { text: "判定しない", src: "params", why: `設定 › 判定 で ${col.name.replace(/\|/g, "")} のチェックを外しています` };
+  const A = e.analysis;
+  /* 解析できなかったファイルでも、ファイルに入っている合格範囲は出す */
+  const judge = (A && A.judge) || resolveJudgeRanges(e.passRanges, state.params);
+  const jr = col.judge ? judge[col.judge] : null;
+  if (!jr) {
+    return {
+      text: "—", src: "none",
+      why: col.judge
+        ? "この項目の合格範囲が変換元ファイルから見つかりませんでした"
+        : "この項目に合格範囲はありません（変換元ファイルにも試験条件にも入っていません）",
+    };
   }
-  const lo = P[spec.lo], hi = P[spec.hi];
+  const where = jr.src === "file"
+    ? `変換元ファイルの「${jr.label}」に入っている判定範囲` +
+      (jr.fileUnit && Math.abs(jr.lo - jr.fileLo) > 1e-9
+        ? `（ファイルでは ${fmtNum(jr.fileLo, 2)}〜${fmtNum(jr.fileHi, 2)} ${jr.fileUnit}。${col.unit} に換算）`
+        : "")
+    : "設定 › 判定 の控えの値（変換元ファイルに範囲が無いため）";
   return {
-    text: `${colFmtR(col, lo)} 〜 ${colFmtR(col, hi)}`, src: "params", lo, hi,
-    why: `設定 › 判定 の許容範囲（${colFmt(col, lo)}〜${colFmt(col, hi)} ${col.unit}）。単票の判定バナーでも同じ値を使います`,
+    text: `${colFmtR(col, jr.lo)} 〜 ${colFmtR(col, jr.hi)}`, src: jr.src, lo: jr.lo, hi: jr.hi,
+    why: `${where}。単票の判定バナーでも同じ値を使います`,
   };
 }
 
@@ -115,14 +128,13 @@ function reportRange(e, col) {
 function reportJudge(e, col) {
   if (col.kind === "spec") return { level: "na", label: "対象外", why: "試験片の寸法のため判定の対象外です" };
   const r = reportRange(e, col);
-  if (r.src !== "params") return { level: null, why: "合格範囲が無いため判定していません" };
-  if (!fin(r.lo) || !fin(r.hi)) return { level: null, why: "設定 › 判定 でこの項目のチェックを外しています" };
+  if (r.src === "none") return { level: null, why: "合格範囲が無いため判定していません" };
   const v = reportValue(e, col);
   const res = rangeCheck(fin(v) ? v : NaN, r.lo, r.hi);
   return {
     level: res.level, label: res.label,
     why: res.level === "na" ? naWhy(e.analysis, col.na)
-      : `測定値 ${colFmt(col, v)} ${col.unit} と許容範囲 ${colFmt(col, r.lo)}〜${colFmt(col, r.hi)} ${col.unit} の比較`,
+      : `測定値 ${colFmt(col, v)} ${col.unit} と合格範囲 ${colFmt(col, r.lo)}〜${colFmt(col, r.hi)} ${col.unit} の比較`,
   };
 }
 
@@ -249,7 +261,10 @@ function reportSheetHtml(e) {
   }).join("");
   const vals = REPORT_COLS.map((c) => {
     const v = reportValue(e, c);
-    if (fin(v)) return `<td class="rp__val">${esc(colFmt(c, v))}</td>`;
+    if (fin(v)) {
+      const why = c.why ? c.why(e, e.analysis) : "";
+      return `<td class="rp__val">${why ? `<span title="${esc(why)}">${esc(colFmt(c, v))}</span>` : esc(colFmt(c, v))}</td>`;
+    }
     /* 寸法は計算するものではないので「未取得」、解析値は「算出不可」と書き分ける */
     const na = c.kind === "spec"
       ? { text: "未取得", why: "試験条件に寸法がありません（解析タブの「断面積 A とゲージ長」で入力できます）" }
@@ -297,8 +312,9 @@ function reportSheetHtml(e) {
         </tbody>
       </table>
       <p class="sheet__note">測定値はこのファイルの解析結果です（算出できない項目は理由つきで「算出不可」と書きます）。
-        <b>合格範囲</b>を持つのは 応力増加速度・ひずみ速度・実績クロス変位速度 の 3 項目で、値は
-        <b>設定 › 判定</b> から取ります（単票の判定バナーと同じ基準）。それ以外は規格値がどこにも無いため空欄です。
+        <b>合格範囲は変換元ファイルに入っている判定範囲</b>をそのまま読み出したもので、
+        応力増加速度・歪速度・弾性率（ヤング率）・クロスヘッド変異速度 の 4 項目が対象です
+        （単票の判定バナーと同じ範囲）。範囲が見つからない項目は空欄にし、合否判定もしません。
         マウスを重ねると、その欄の出どころや算出できない理由が出ます。</p>
     </section>
 

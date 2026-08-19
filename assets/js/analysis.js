@@ -20,15 +20,11 @@ const DEFAULT_PARAMS = {
   shimadzuPctOfMaxForce: 30,  // %    島津法の 1 秒あたり荷重低下率
   smoothingWindow: 5,         // 点   速度の移動平均窓
   smoothing: true,
-  rampCheck: true,            // 応力増加速度の許容範囲チェックを行うか
+  /* 合格範囲は変換元ファイルから読む（別紙仕様）。下の 3 つは、ファイルから読めない
+     入力（CSV 等）のときだけ使う応力増加速度の控え。ほかの項目に控えは置かない。 */
+  rampCheck: true,            // ファイルに範囲が無いとき、下の値で応力増加速度を判定するか
   rampMin: 1.5,               // MPa/s
   rampMax: 20.49,             // MPa/s
-  srateCheck: true,           // ひずみ速度の許容範囲チェックを行うか
-  srateMin: 0.00007,          // s⁻¹（ISO 6892-1 方式A のひずみ速度レンジ）
-  srateMax: 0.008,            // s⁻¹
-  crossCheck: true,           // 実績クロスヘッド変位速度の許容範囲チェックを行うか
-  crossMin: 0.02,             // mm/min ★仮置き（弾性域の速度。実際の基準値に置き換える）
-  crossMax: 6.0,              // mm/min ★仮置き
   auditOut: false,            // 変更履歴 (audit) も出力（vtav のみ）
 };
 const PARAM_META = [
@@ -43,13 +39,49 @@ const PARAM_META = [
   { key: "fracture_k1", label: "式① 急落倍率 k1", unit: "−", step: "0.5", min: 0, group: "破断・伸び" },
   { key: "fracture_k2", label: "式② 低荷重比 k2", unit: "× Fmax", step: "0.005", min: 0, group: "破断・伸び" },
   { key: "shimadzuPctOfMaxForce", label: "島津法 1 秒低下率", unit: "% of Fmax", step: "1", min: 0, group: "破断・伸び" },
-  { key: "rampMin", label: "応力増加速度 下限", unit: "MPa/s", step: "0.01", min: 0, group: "判定" },
-  { key: "rampMax", label: "応力増加速度 上限", unit: "MPa/s", step: "0.01", min: 0, group: "判定" },
-  { key: "srateMin", label: "ひずみ速度 下限", unit: "s⁻¹", step: "0.00001", min: 0, group: "判定" },
-  { key: "srateMax", label: "ひずみ速度 上限", unit: "s⁻¹", step: "0.00001", min: 0, group: "判定" },
-  { key: "crossMin", label: "クロス変位速度 下限", unit: "mm/min", step: "0.1", min: 0, group: "判定" },
-  { key: "crossMax", label: "クロス変位速度 上限", unit: "mm/min", step: "0.1", min: 0, group: "判定" },
+  { key: "rampMin", label: "応力増加速度 下限（控え）", unit: "MPa/s", step: "0.01", min: 0, group: "判定" },
+  { key: "rampMax", label: "応力増加速度 上限（控え）", unit: "MPa/s", step: "0.01", min: 0, group: "判定" },
 ];
+
+/* ───────────────── 合否判定の対象と許容範囲 ─────────────────
+ * 許容範囲は変換元ファイルの合格範囲レコードから取る（別紙仕様）。
+ * scale はファイルの単位を画面の単位に合わせる係数（ヤング率は GPa → N/mm²）。
+ */
+const JUDGE_SPECS = [
+  { key: "ramp",  label: "応力増加速度",       unit: "MPa/s",  scale: 1,
+    value: (A) => (A.rampRate ? A.rampRate.value : NaN),      fmt: (v) => fmtNum(v, 2),
+    fb: { on: "rampCheck", lo: "rampMin", hi: "rampMax" } },
+  { key: "srate", label: "ひずみ速度",         unit: "s⁻¹",    scale: 1,
+    value: (A) => (A.strainRate1 ? A.strainRate1.value : NaN), fmt: (v) => fmtExp(v, 2) },
+  { key: "cross", label: "実績クロス変位速度", unit: "mm/min", scale: 1,
+    value: (A) => A.vPlastic,                                  fmt: (v) => fmtNum(v, 2) },
+  { key: "young", label: "弾性率",             unit: "N/mm²",  scale: 1000,
+    value: (A) => (A.youngs ? A.youngs.nmm2 : NaN),             fmt: (v) => fmtNum(v, 0) },
+];
+
+/**
+ * 合否判定に使う許容範囲を決める。変換元ファイルの合格範囲を最優先し、
+ * ファイルに無いときだけ控え（設定値・いまは応力増加速度のみ）を使う。
+ * 解析ができなかったファイルでもレポートから呼べるよう、関数として切り出している。
+ */
+function resolveJudgeRanges(fileRanges, P) {
+  const R = fileRanges || {};
+  const out = {};
+  for (const spec of JUDGE_SPECS) {
+    const f = R[spec.key];
+    if (f && fin(f.lo) && fin(f.hi)) {
+      out[spec.key] = {
+        lo: f.lo * spec.scale, hi: f.hi * spec.scale, src: "file",
+        label: f.label, fileLo: f.lo, fileHi: f.hi, fileUnit: f.unit,
+      };
+    } else if (spec.fb && P[spec.fb.on] && fin(P[spec.fb.lo]) && fin(P[spec.fb.hi])) {
+      out[spec.key] = { lo: P[spec.fb.lo], hi: P[spec.fb.hi], src: "params" };
+    } else {
+      out[spec.key] = null;
+    }
+  }
+  return out;
+}
 
 /**
  * 値を許容範囲と突き合わせる（レポートの合否判定と判定バナーで共用）。
@@ -223,7 +255,6 @@ function analyze(inp, P) {
     A.vBase = NaN;
     A.vBaseBasis = "";
     A.blocked.push({ what: "耐力（速度法）", why: "速度（時間・ストローク）が無いため検出できません" });
-    A.blocked.push({ what: "実績クロス変位速度", why: "速度（時間・ストローク）が無いため算出できません" });
   }
 
   /* --- 14.3 前提: 弾性直線域と勾配 slope --- */
@@ -417,6 +448,39 @@ function analyze(inp, P) {
     }
   }
 
+  /* --- 実績クロスヘッド変位速度: 降伏後（主段）のストローク速度の中央値 ---
+     弾性域は応力速度制御で遅く動かすため、試験速度として報告されるのは主段の速度。 */
+  A.vPlastic = NaN;
+  A.vPlasticBasis = "";
+  if (velocity) {
+    let from = A.yieldV ? A.yieldV.index : -1;
+    let fromWhy = "耐力点";
+    if (from < 0) {
+      for (let i = 0; i < n; i++) if (fin(force[i]) && force[i] >= 0.5 * maxForce) { from = i; break; }
+      fromWhy = "試験力が Fmax の 50% を超えた点（耐力点が無いため）";
+    }
+    const to = frMain ? frMain.index : maxIndex;
+    if (from >= 0 && to > from + 2) {
+      const seg = [];
+      for (let i = from; i <= to; i++) if (fin(velocity[i])) seg.push(velocity[i]);
+      const m = median(seg);
+      if (fin(m)) {
+        A.vPlastic = m;
+        A.vPlasticBasis = `${fromWhy}から${frMain ? "破断点" : "最大点"}までの速度の中央値（第 ${from + 1}〜${to + 1} 点・${seg.length} 点）`;
+      }
+    }
+  }
+  if (!fin(A.vPlastic)) {
+    A.blocked.push({
+      what: "実績クロス変位速度",
+      why: velocity ? "耐力点〜破断点の区間が決まらないため算出できません"
+                    : "速度（時間・ストローク）が無いため算出できません",
+    });
+  }
+
+  /* --- 合否判定に使う許容範囲を決める（ファイル優先・控えは応力増加速度のみ） --- */
+  A.judge = resolveJudgeRanges(inp.ranges, P);
+
   A.ok = !!(A.rm || A.elongation);
 
   /* --- 判定（§16.1）：色だけでなく必ず理由を文字で持たせる --- */
@@ -431,23 +495,16 @@ function analyze(inp, P) {
   } else {
     checks.push({ level: "na", label: "弾性直線域の直線性", detail: "直線域を決定できないため未評価" });
   }
-  /* 速度まわりの 3 つは許容範囲との突き合わせで合否を出す（レポートの合否判定と同じ） */
-  const speedChecks = [
-    { on: P.rampCheck,  label: "応力増加速度", value: A.rampRate ? A.rampRate.value : NaN,
-      lo: P.rampMin, hi: P.rampMax, unit: "MPa/s", fmt: (v) => fmtNum(v, 2), fmtR: (v) => fmtNum(v, 2) },
-    { on: P.srateCheck, label: "ひずみ速度", value: A.strainRate1 ? A.strainRate1.value : NaN,
-      lo: P.srateMin, hi: P.srateMax, unit: "s⁻¹", fmt: (v) => fmtExp(v, 2), fmtR: (v) => fmtExp(v, 2) },
-    { on: P.crossCheck, label: "実績クロス変位速度", value: A.vBase,
-      lo: P.crossMin, hi: P.crossMax, unit: "mm/min", fmt: (v) => fmtNum(v, 2), fmtR: (v) => fmtNum(v, 2) },
-  ];
-  for (const c of speedChecks) {
-    if (!c.on) continue;
-    const r = rangeCheck(c.value, c.lo, c.hi);
+  /* 合格範囲を持つ項目は、その範囲との突き合わせで合否を出す（レポートの合否判定と同じ） */
+  for (const spec of JUDGE_SPECS) {
+    const jr = A.judge[spec.key];
+    if (!jr) continue;
+    const v = spec.value(A);
+    const r = rangeCheck(v, jr.lo, jr.hi);
+    const where = jr.src === "file" ? `変換元ファイルの「${jr.label}」` : "設定値（控え）";
     checks.push({
-      level: r.level, label: c.label,
-      detail: r.level === "na"
-        ? `${r.label}（許容範囲 ${c.fmtR(c.lo)}〜${c.fmtR(c.hi)} ${c.unit}・設定値）`
-        : `${c.fmt(c.value)} ${c.unit}（許容範囲 ${c.fmtR(c.lo)}〜${c.fmtR(c.hi)} ${c.unit}・設定値）`,
+      level: r.level, label: spec.label,
+      detail: `${fin(v) ? `${spec.fmt(v)} ${spec.unit}` : r.label}（許容範囲 ${spec.fmt(jr.lo)}〜${spec.fmt(jr.hi)} ${spec.unit}／${where}）`,
     });
   }
   const missing = [];

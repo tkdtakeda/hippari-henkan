@@ -92,6 +92,7 @@ async function processEntry(entry) {
       entry.fmtBasis = `CSV 入力（文字コード: ${enc}）`;
       entry.results = []; entry.report = []; entry.cond = {}; entry.audit = [];
       entry.wave = null; entry.tokenCount = 0;
+      entry.passRanges = {};              // CSV 入力には合格範囲が入っていない
     } else {
       const det = detectFormat(data, entry.name);
       entry.fmt = det.fmt;
@@ -117,6 +118,8 @@ async function processEntry(entry) {
       }
       entry.cond = cond;
 
+      /* 合否判定の合格範囲は生バイトから拾う（別紙仕様・xtux / vtav 共通） */
+      entry.passRanges = extractPassRanges(data);
       entry.wave = extractWaveform(data);
       entry.audit = det.fmt === "vtav" ? parseAudit(tokens) : [];
       entry._waveCsv = null;
@@ -213,6 +216,7 @@ function runAnalysis(entry) {
       displacement: cols.displacement, stroke: cols.stroke,
       area: area.area, areaBasis: area.basis,
       stressSource: cols.stress ? "CSV の応力列をそのまま使用（換算なし・§11.2 A）" : null,
+      ranges: entry.passRanges || null,
     }, P);
     return;
   }
@@ -232,6 +236,7 @@ function runAnalysis(entry) {
     displacement: c.Extensometer_mm || null, stroke: c.Stroke_mm || null,
     area: area.area, areaBasis: area.basis,
     stressSource: null,                       // DAT は全点 SS 応力を force ÷ A で復元（§11.2 B）
+    ranges: entry.passRanges || null,
   }, P);
 }
 function reanalyzeAll() {
