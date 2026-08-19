@@ -175,6 +175,91 @@ function parseResultsVtav(data, tokens) {
   return res;
 }
 
+/* ============================================================================
+ * 合否判定の「合格範囲」抽出（別紙: vtav/xtux 合格範囲抽出ルール仕様）
+ *
+ * 構造（全ファイル共通・20 バイト）:
+ *   +0  00 00 00 00      uint32 = 0   ┐ MARK
+ *   +4  01 00 00 00      uint32 = 1   ┘（判定有効フラグと推定）
+ *   +8  [下限] float32(LE)
+ *   +12 00 00 00 00      float32 = 0.0（区切り／中間値。判定には使わない）
+ *   +16 [上限] float32(LE)
+ *
+ * MARK は汎用のバイト列なので単独では誤検出が非常に多い。§3 のフィルタを必ず通す。
+ * 項目との対応づけは、ラベル文字列を「生の UTF-8 部分一致」で探して起点にする
+ * （長さプレフィックスは vtav では一致するが xtux では一致しないため使わない）。
+ * 値は試験方法ごとに違うので、必ずファイルから読む（ハードコードしない）。
+ * ==========================================================================*/
+const RANGE_MARK = Uint8Array.from([0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
+const RANGE_WINDOW = 800;                 // ラベル位置から前方に見る窓（バイト）
+const PASS_RANGE_ITEMS = [
+  { key: "ramp",  labels: ["応力増加速度"],         unit: "MPa/s"  },
+  { key: "srate", labels: ["歪速度"],               unit: "/sec"   },
+  { key: "young", labels: ["ヤング率", "弾性率"],   unit: "GPa"    },  // vtav=ヤング率 / xtux=弾性率
+  { key: "cross", labels: ["クロスヘッド変異速度"], unit: "mm/min" },
+];
+
+/** §3 有効判定フィルタ。1 つでも外れたら「合格範囲ではない」として捨てる。 */
+function validPassRange(d, i) {
+  if (i + 12 > d.length) return null;
+  const dv = new DataView(d.buffer, d.byteOffset + i, 12);
+  const lo = dv.getFloat32(0, true), mid = dv.getFloat32(4, true), hi = dv.getFloat32(8, true);
+  if (mid !== 0) return null;                                   // 1. 中間 == 0.0
+  if (!isFinite(lo) || !isFinite(hi)) return null;              // 3. 有限
+  if (!(lo < hi)) return null;                                  // 2. 下限 < 上限
+  if (!(lo > -1e5 && lo < 1e6 && hi < 1e6)) return null;        // 4. 桁が妥当
+  if (lo === 0 && hi === 0) return null;                        // 5. (0,0) は未設定
+  return { lo, hi, mid };
+}
+
+/**
+ * ラベル候補の順に探し、最初に見つかった合格範囲を返す（§4）。
+ *
+ * 窓の中に「別項目のラベル」が現れたらそこで窓を打ち切る。仕様書どおり窓を固定長で
+ * 取ると、項目が近接して並んでいるときに隣の項目の範囲を拾ってしまう（実測で確認）。
+ * 打ち切ったときは、その出現位置は諦めて次の出現位置を見る。
+ */
+function findPassRange(data, labels, others) {
+  const enc = new TextEncoder();
+  const otherNeedles = (others || []).map((x) => enc.encode(x));
+  for (const label of labels) {
+    const needle = enc.encode(label);
+    let idx = 0;
+    for (;;) {
+      const j = findBytes(data, needle, idx);                   // 生の部分一致
+      if (j < 0) break;
+      const win = data.subarray(j, Math.min(data.length, j + RANGE_WINDOW));
+      let limit = win.length;
+      for (const o of otherNeedles) {
+        const at = findBytes(win, o, needle.length);            // ラベル自身の先は飛ばす
+        if (at >= 0 && at < limit) limit = at;
+      }
+      let k = 0;
+      for (;;) {
+        const m = findBytes(win, RANGE_MARK, k);
+        if (m < 0 || m >= limit) break;
+        const r = validPassRange(data, j + m + 8);
+        if (r) return { ...r, label, at: j + m };
+        k = m + 1;
+      }
+      idx = j + 1;
+    }
+  }
+  return null;
+}
+
+/** ファイル全体から各項目の合格範囲を拾う。見つからない項目は入れない。 */
+function extractPassRanges(data) {
+  const out = {};
+  for (const it of PASS_RANGE_ITEMS) {
+    /* 自分以外の項目名は「窓の打ち切り」に使う（隣の項目の範囲を拾わないため） */
+    const others = PASS_RANGE_ITEMS.filter((x) => x !== it).flatMap((x) => x.labels);
+    const r = findPassRange(data, it.labels, others);
+    if (r) out[it.key] = { lo: r.lo, hi: r.hi, label: r.label, unit: it.unit, at: r.at };
+  }
+  return out;
+}
+
 /* ───────────────── 試験条件（§5.4） ───────────────── */
 const DATE_RE = /^\d{4}\/\d{2}\/\d{2}( \d{1,2}:\d{2}:\d{2})?$/;
 const DIM_RE = /^-?\d+\.\d+$/;

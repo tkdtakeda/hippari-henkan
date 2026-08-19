@@ -94,7 +94,7 @@
   --font: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", "Meiryo",
           -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "SFMono-Regular", "Consolas", "Roboto Mono", "Courier New", monospace;
-  --fs-1:11px; --fs-2:12px; --fs-3:13px; --fs-4:15px; --fs-5:18px; --fs-6:21px;
+  --fs-0:10px; --fs-1:11px; --fs-2:12px; --fs-3:13px; --fs-4:15px; --fs-5:18px; --fs-6:21px;
   --lh-tight:1.25; --lh:1.55;
   --fw-normal:400; --fw-med:600; --fw-bold:700;
 
@@ -116,6 +116,21 @@
   --w-select: 170px;
   --w-search: 220px;
   --w-range: 84px;
+
+  /* ---- レポート（用紙）---- */
+  --sheet-w: 210mm;            /* A4 縦 */
+  --sheet-h: 297mm;
+  --sheet-pad: 9mm;
+  --sheet-chart-h: 44mm;       /* 用紙内グラフの下限。余りは全部グラフに渡す */
+  --sheet-gap: var(--sp-3);
+  --sheet-table-min: 680px;    /* 表をこれ以上は潰さない（狭いときは用紙内を横スクロール） */
+  --sheet-print-chart-h: 128mm; /* 印刷時のグラフの高さ（A4 縦の残り） */
+  --sheet-ink: var(--n-900);
+  --sheet-paper: #ffffff;
+  --sheet-rule: var(--n-300);
+  --sheet-rule-strong: var(--n-500);
+  --sheet-head-bg: var(--blue-050);
+  --sheet-shadow: 0 6px 24px rgba(10,38,71,.18);
 
   /* ---- 線図 ---- */
   --chart-pad-l:60; --chart-pad-r:14; --chart-pad-t:12; --chart-pad-b:38;
@@ -188,6 +203,14 @@
     --chart-sel-border: var(--blue-300);
     --chart-ov-mask: rgba(4,10,20,.55);
     --chart-ov-border: var(--blue-300);
+
+    /* 用紙は暗所でもまぶしくないよう、白ではなく明るいサーフェスで刷る */
+    --sheet-ink: var(--text);
+    --sheet-paper: var(--surface);
+    --sheet-rule: var(--border-strong);
+    --sheet-rule-strong: var(--n-400);
+    --sheet-head-bg: var(--primary-soft-2);
+    --sheet-shadow: 0 6px 24px rgba(0,0,0,.5);
   }
 }
 
