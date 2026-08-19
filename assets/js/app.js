@@ -905,6 +905,9 @@ function analysisPanel(e) {
 /**
  * 破断点をどう決めたか。伸びが思ったより小さいときは、どちらの方式が
  * どこを拾ったのか、波形はどこまで伸びているのかをここで突き合わせる。
+ *
+ * ★ この決め方はまだ試験段階。レポートには使わず（レポートは変換元ファイルの
+ *   破断点の値をそのまま出す）、ここでの見比べ用に留めている。
  */
 function fracturePanel(e, A) {
   const st = A.series.strain;
@@ -923,6 +926,7 @@ function fracturePanel(e, A) {
 
   return `<div class="card">
     <div class="card__head"><span class="card__title">破断点の決定</span>
+      ${statusChip("warn", "試験段階")}
       ${adopted ? `<span class="badge">採用 <b>${esc(adopted)}</b></span>` : statusChip("na", "破断点なし")}</div>
     <div class="card__body card__body--flush"><div class="table-wrap">
       <table class="tbl"><thead><tr><th>方式</th><th class="n">点</th><th class="n">ひずみ</th><th>根拠 / 理由</th></tr></thead>
@@ -936,7 +940,8 @@ function fracturePanel(e, A) {
           <td class="n">${fileElong ? esc(fileElong.value) + " %" : "—"}</td>
           <td class="src">${fileElong ? `変換元ファイルの「${esc(fileElong.label)}」（装置が出した答え）` : "変換元ファイルに破断点の値がありません"}</td></tr>
       </tbody></table></div></div>
-    <p class="card__note">伸びは採用した破断点のひずみです。元ファイルの値と食い違うときは、上の行を見比べてください。
+    <p class="card__note"><b>この決め方はまだ試験段階です。</b>レポートには使わず、レポートの伸びは
+      変換元ファイルの「破断点_変位(ひずみ)」をそのまま出します。ここは元ファイルの値と見比べるための表です。
       式②のしきい値（Fmax に対する割合）と島津法の低下率は、設定 › 破断・伸び で変えられます。</p>
   </div>`;
 }

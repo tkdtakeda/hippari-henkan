@@ -103,19 +103,17 @@ function fileValue(e, col) {
 }
 
 /**
- * 測定値。**変換元ファイルに入っている値（装置が出した答え）を優先**し、
- * 無いときだけこのツールの解析値を使う。両方あるときは差を持たせて、
- * 食い違いに気づけるようにする（どちらを出したかは画面の説明に出す）。
+ * 測定値は**変換元ファイルから出てくる値だけ**を出す。
+ * このツールの解析値はレポートには入れない（破断点の決定などはまだ試験段階のため）。
+ * 試験片の寸法は試験条件から取るので、これもファイル由来。
  */
 function reportValue(e, col) {
-  const f = fileValue(e, col);
-  const a = col.get(e, e.analysis);
-  const calc = fin(a) ? a : null;
-  if (f) {
-    const diff = calc != null && Math.abs(f.value - calc) > Math.max(Math.abs(f.value) * 0.02, 1e-12);
-    return { value: f.value, src: "file", label: f.label, calc, diff };
+  if (col.kind === "spec") {
+    const v = col.get(e, e.analysis);
+    return { value: fin(v) ? v : null, src: fin(v) ? "cond" : "none", label: null };
   }
-  return { value: calc, src: calc == null ? "none" : "calc", label: null, calc, diff: false };
+  const f = fileValue(e, col);
+  return f ? { value: f.value, src: "file", label: f.label } : { value: null, src: "none", label: null };
 }
 
 /**
@@ -158,9 +156,10 @@ function reportJudge(e, col) {
   const res = rangeCheck(fin(v.value) ? v.value : NaN, r.lo, r.hi);
   return {
     level: res.level, label: res.label,
-    why: res.level === "na" ? naWhy(e.analysis, col.na)
-      : `測定値 ${colFmt(col, v.value)} ${col.unit}（${v.src === "file" ? "変換元ファイルの値" : "このツールの解析値"}）と`
-        + ` 合格範囲 ${colFmt(col, r.lo)}〜${colFmt(col, r.hi)} ${col.unit} の比較`,
+    why: res.level === "na"
+      ? `変換元ファイルに「${(col.srcLabels || []).join("」「")}」の値が無いため判定できません`
+      : `変換元ファイルの測定値 ${colFmt(col, v.value)} ${col.unit} と`
+        + ` 合格範囲 ${colFmt(col, r.lo)}〜${colFmt(col, r.hi)} ${col.unit} の比較（どちらもファイルの値）`,
   };
 }
 
@@ -243,13 +242,14 @@ function reportMeta(e) {
   const dim = (k) => (pick(k) ? `${pick(k)} mm` : null);
   const A = e.analysis;
 
-  /* 耐力点（速度法）だけは解析の実値。取れないときは理由を title で追えるようにする */
+  /* 耐力点も変換元ファイルの値。無いときは（なし）とし、参考としてこのツールの解析値を title に添える */
+  const yf = fileValue(e, { srcLabels: ["耐力点1_応力", "耐力点1Rp"] });
   const y = A && A.yieldV && fin(A.yieldV.stress) ? A.yieldV : null;
-  const yieldWhy = y ? y.basis
-    : (A && (A.blocked.find((b) => b.what === "耐力（速度法）") || {}).why) || "解析していないため算出していません";
-  const yieldText = y
-    ? `${fmtNum(y.stress, 1)} N/mm²${fin(y.strain) ? `（ε ${fmtNum(y.strain, 3)} %）` : ""}`
-    : null;
+  const yieldText = yf ? `${fmtNum(yf.value, 1)} N/mm²` : null;
+  const yieldWhy = yf
+    ? `変換元ファイルの「${yf.label}」の値` + (y ? `／このツールの解析値（速度法）は ${fmtNum(y.stress, 1)} N/mm²` : "")
+    : `変換元ファイルに耐力点の値がありません` +
+      (y ? `／このツールの解析値（速度法・試験段階）は ${fmtNum(y.stress, 1)} N/mm²` : "");
 
   const t = parseFileTitle(e);
   const fromName = "ファイル名（年月日_連番_ロットNo._[採取位置]試験方向）から読み取り";
@@ -288,20 +288,14 @@ function reportSheetHtml(e) {
   const vals = REPORT_COLS.map((c) => {
     const v = reportValue(e, c);
     if (fin(v.value)) {
-      const calcWhy = c.why ? c.why(e, e.analysis) : "";
       const why = v.src === "file"
-        ? `変換元ファイルの「${v.label}」の値` +
-          (v.calc != null
-            ? `／このツールの解析値は ${colFmt(c, v.calc)} ${c.unit}${v.diff ? "（2% 以上ずれています）" : "（ほぼ一致）"}` +
-              (calcWhy ? `。解析値の求め方: ${calcWhy}` : "")
-            : "")
-        : (calcWhy ? `このツールの解析値。${calcWhy}` : "このツールの解析値");
-      return `<td class="rp__val"><span class="${v.diff ? "rp__diff" : ""}" title="${esc(why)}">${esc(colFmt(c, v.value))}</span></td>`;
+        ? `変換元ファイルの「${v.label}」の値`
+        : "変換元ファイルの試験条件から";
+      return `<td class="rp__val"><span title="${esc(why)}">${esc(colFmt(c, v.value))}</span></td>`;
     }
-    /* 寸法は計算するものではないので「未取得」、解析値は「算出不可」と書き分ける */
     const na = c.kind === "spec"
-      ? { text: "未取得", why: "試験条件に寸法がありません（解析タブの「断面積 A とゲージ長」で入力できます）" }
-      : { text: "算出不可", why: naWhy(e.analysis, c.na || c.name) };
+      ? { text: "未取得", why: "変換元ファイルの試験条件に寸法がありません" }
+      : { text: "取得できず", why: `変換元ファイルに「${(c.srcLabels || []).join("」「")}」の値が見つかりませんでした` };
     return `<td class="rp__val"><span class="rp__na" title="${esc(na.why)}">${na.text}</span></td>`;
   }).join("");
   const judges = REPORT_COLS.map((c) => {
@@ -344,9 +338,9 @@ function reportSheetHtml(e) {
           <tr><th scope="row" class="rp__rowhead">合否判定</th>${judges}</tr>
         </tbody>
       </table>
-      <p class="sheet__note"><b>測定値は変換元ファイルに入っている値（装置が出した答え）</b>を優先し、
-        ファイルに無い項目だけこのツールの解析値を使います。どちらを出したか、解析値との差はマウスを重ねると出ます
-        （2% 以上ずれている値には印を付けます）。算出も取得もできない項目は理由つきで「算出不可」と書きます。
+      <p class="sheet__note"><b>測定値も合格範囲も、変換元ファイルから出てくる値をそのまま出しています</b>
+        （このツールの解析値はレポートには入れていません。解析値と見比べるときは 単票 › 解析 タブを使ってください）。
+        寸法は試験条件から取ります。ファイルに値が無い項目は「取得できず」と書き、判定もしません。
         <b>合格範囲は変換元ファイルに入っている判定範囲</b>をそのまま読み出したもので、
         応力増加速度・歪速度・弾性率（ヤング率）・クロスヘッド変異速度 の 4 項目が対象です
         （単票の判定バナーと同じ範囲）。範囲が見つからない項目は空欄にし、合否判定もしません。
@@ -471,12 +465,8 @@ function mountReportChart(e) {
     series: [{ ...base, color: cssVar("--chart-line"), width: 1.6, primary: true }],
     markers: [], bands: [],
   };
-  /* 全体像なので注釈は破断点と最大点だけに絞る */
-  const fr = A.fractureA || A.fractureB;
+  /* 全体像なので注釈は最大点だけ。破断点の決め方はまだ試験段階なので用紙には出さない。 */
   const at = (i) => (i != null && A.series.displacement ? A.series.displacement[i] : NaN);
-  if (fr && fin(at(fr.index)) && fin(fr.stress)) {
-    spec.markers.push({ x: at(fr.index), y: fr.stress, shape: "x", color: cssVar("--chart-fracture"), label: "破断" });
-  }
   if (A.rm && fin(at(A.rm.index))) {
     spec.markers.push({ x: at(A.rm.index), y: A.rm.value, shape: "circle", color: cssVar("--chart-line-2"), label: "Rm" });
   }
