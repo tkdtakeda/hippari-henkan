@@ -893,11 +893,51 @@ function analysisPanel(e) {
           </dl>${A.linear.fallback ? `<div class="reason reason--warn" style="margin-top:var(--sp-3)">${ICON.warn}<div><b>代替基準を使用しています</b>耐力（速度法）が算出できないため、直線域の基準を Rm から推定しました。0.2% 耐力・ヤング率は参考値として扱ってください。</div></div>` : ""}`
           : `<p class="muted">直線域を決定できませんでした。</p>`}</div>
       </div>
+      ${fracturePanel(e, A)}
       <div class="card">
         <div class="card__head"><span class="card__title">算出できなかった量とその理由</span></div>
         <div class="card__body"><div class="checks">${blocked}</div></div>
       </div>
     </div>
+  </div>`;
+}
+
+/**
+ * 破断点をどう決めたか。伸びが思ったより小さいときは、どちらの方式が
+ * どこを拾ったのか、波形はどこまで伸びているのかをここで突き合わせる。
+ */
+function fracturePanel(e, A) {
+  const st = A.series.strain;
+  const at = (i) => (i != null && st && fin(st[i]) ? `${fmtNum(st[i], 2)} %` : "—");
+  const lastIdx = A.n - 1;
+  let maxStrain = NaN;
+  if (st) { let m = -Infinity; for (const v of st) if (fin(v) && v > m) m = v; maxStrain = m; }
+  const fileElong = (e.results || []).find((r) => r.label === "破断点_変位(ひずみ)" || r.label === "破断点_At");
+  const adopted = A.fractureA ? "式①→②法" : (A.fractureB ? "島津法" : null);
+
+  const row = (name, fr, why) => `<tr>
+    <td class="k">${esc(name)}</td>
+    <td class="n">${fr ? `第 ${(fr.index + 1).toLocaleString("ja-JP")} 点` : "—"}</td>
+    <td class="n">${fr ? at(fr.index) : "—"}</td>
+    <td class="src">${esc(fr ? fr.basis : why)}</td></tr>`;
+
+  return `<div class="card">
+    <div class="card__head"><span class="card__title">破断点の決定</span>
+      ${adopted ? `<span class="badge">採用 <b>${esc(adopted)}</b></span>` : statusChip("na", "破断点なし")}</div>
+    <div class="card__body card__body--flush"><div class="table-wrap">
+      <table class="tbl"><thead><tr><th>方式</th><th class="n">点</th><th class="n">ひずみ</th><th>根拠 / 理由</th></tr></thead>
+      <tbody>
+        ${row("式①→②法", A.fractureA, (A.blocked.find((b) => b.what.startsWith("伸び（式")) || {}).why || "未検出")}
+        ${row("島津法", A.fractureB, (A.blocked.find((b) => b.what.startsWith("伸び（島津")) || {}).why || "未検出")}
+        <tr><td class="k">波形の末端</td><td class="n">第 ${(lastIdx + 1).toLocaleString("ja-JP")} 点</td>
+          <td class="n">${at(lastIdx)}</td>
+          <td class="src">記録の最後。ひずみの最大は ${fin(maxStrain) ? `${fmtNum(maxStrain, 2)} %` : "—"}</td></tr>
+        <tr><td class="k">元ファイルの値</td><td class="n">—</td>
+          <td class="n">${fileElong ? esc(fileElong.value) + " %" : "—"}</td>
+          <td class="src">${fileElong ? `変換元ファイルの「${esc(fileElong.label)}」（装置が出した答え）` : "変換元ファイルに破断点の値がありません"}</td></tr>
+      </tbody></table></div></div>
+    <p class="card__note">伸びは採用した破断点のひずみです。元ファイルの値と食い違うときは、上の行を見比べてください。
+      式②のしきい値（Fmax に対する割合）と島津法の低下率は、設定 › 破断・伸び で変えられます。</p>
   </div>`;
 }
 

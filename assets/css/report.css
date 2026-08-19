@@ -103,6 +103,8 @@
 .rp td.rp__unit,.rp td.rp__range,.rp td.rp__val{ word-break:keep-all; overflow-wrap:break-word; }
 .rp__val{ font-size:var(--fs-3); font-weight:var(--fw-bold); }
 .rp__val--text{ font-size:var(--fs-2); }
+/* ファイルの値とこのツールの解析値が 2% 以上ずれている欄に印を付ける */
+.rp__diff{ border-bottom:2px dotted var(--warn); padding-bottom:1px; }
 /* 算出できなかった欄は、空白ではなく「算出不可」と書いて理由を title に持たせる */
 .rp__na{ font-size:var(--fs-1); font-weight:var(--fw-normal); color:var(--text-muted); }
 .rp__judge{ padding:var(--sp-1) 2px; }
