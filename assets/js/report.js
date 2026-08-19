@@ -46,9 +46,9 @@ const REPORT_COLS = [
   { key: "srate", why: (e, A) => (A && A.strainRate1 ? A.strainRate1.basis : ""),  w: 1.15, kind: "measure", name: "ひずみ速度",       sub: "歪速度",
     unit: "s⁻¹",    exp: true, na: "ひずみ", judge: "srate",
     get: (e, A) => (A && A.strainRate1 ? A.strainRate1.value : null) },
-  { key: "cross", why: (e, A) => (A ? A.vPlasticBasis || "" : ""),  w: 1.1,  kind: "measure", name: "実績クロス|変位速度", sub: "実績|クロスヘッド|変異速度",
+  { key: "cross", why: (e, A) => (A ? A.vCrossBasis || "" : ""),  w: 1.1,  kind: "measure", name: "実績クロス|変位速度", sub: "実績|クロスヘッド|変異速度",
     unit: "mm/min", d: 2, na: "実績クロス変位速度", judge: "cross",
-    get: (e, A) => (A && fin(A.vPlastic) ? A.vPlastic : null) },
+    get: (e, A) => (A && fin(A.vCross) ? A.vCross : null) },
   { key: "thick",  w: 0.9,  kind: "spec",    name: "厚さ",             sub: "試験条件",
     unit: "mm",     d: 3, get: (e) => dimOf(e, "厚さ"), why: (e) => dimWhy(e, "厚さ") },
   { key: "width",  w: 0.9,  kind: "spec",    name: "幅",               sub: "試験条件",
@@ -321,9 +321,29 @@ function reportSheetHtml(e) {
     <section class="sheet__block sheet__block--chart">
       <h3 class="sheet__h">応力 － 変位（伸び）　全体像</h3>
       ${plot}
-      <p class="sheet__note">全体像のため常に全範囲を表示します（拡大して見るときは「単票 › 線図」タブ、または線図の「最大化」を使います）。</p>
+      <p class="sheet__note">全体像のため常に全範囲を表示します（拡大して見るときは「単票 › 線図」タブ、または線図の「最大化」を使います）。${extStallNote(e)}</p>
     </section>
   </div>`;
+}
+
+/**
+ * 伸び計が試験の途中で止まっている（破断で外す装置など）ときに、グラフが途中で
+ * 終わって見える理由を用紙にも書く。データが欠けているわけではない。
+ */
+function extStallNote(e) {
+  if (!e.wave || !e.wave.ok || !e.wave.columns.Extensometer_mm) return "";
+  const ext = channelEnds(e.wave).find((c) => c.name === "Extensometer_mm");
+  if (!ext || !ext.stalled) return "";
+  const A = e.analysis;
+  let upTo = "";
+  if (A && A.series && A.series.strainStroke) {
+    let m = -Infinity;
+    for (const v of A.series.strainStroke) if (fin(v) && v > m) m = v;
+    if (isFinite(m)) upTo = `ストローク基準では ${fmtNum(m, 1)} % まで続きます。`;
+  }
+  return ` <b>伸び計は第 ${(ext.last + 1).toLocaleString("ja-JP")} 点`
+    + `${fin(ext.lastTime) ? `（${fmtNum(ext.lastTime, 1)} sec）` : ""} で止まっています</b>`
+    + `（破断で外す装置ではここで値が動かなくなります）。${upTo}波形データは全 ${e.wave.points.toLocaleString("ja-JP")} 点そろっています。`;
 }
 
 /* ───────────────── レポートモードの画面 ───────────────── */

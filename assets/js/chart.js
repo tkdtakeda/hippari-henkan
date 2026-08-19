@@ -39,6 +39,9 @@ function tickLabel(v, step) {
 const AXES = {
   strain:       { label: "ひずみ ε (%)",   short: "ε",   unit: "%",      key: "strain" },
   displacement: { label: "変位 (mm)",      short: "変位", unit: "mm",     key: "displacement" },
+  /* 伸び計は破断で止まる（外す）ことがある。ストローク側は最後まで動くので軸として選べるようにする */
+  stroke:       { label: "ストローク (mm)", short: "St",  unit: "mm",     key: "stroke" },
+  strainStroke: { label: "ひずみ（ストローク基準）(%)", short: "εst", unit: "%", key: "strainStroke" },
   time:         { label: "時間 (sec)",     short: "t",   unit: "sec",    key: "time" },
   stress:       { label: "応力 σ (N/mm²)", short: "σ",   unit: "N/mm²",  key: "stress" },
   force:        { label: "試験力 F (N)",   short: "F",   unit: "N",      key: "force" },

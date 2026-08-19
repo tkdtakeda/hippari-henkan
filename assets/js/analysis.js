@@ -54,7 +54,7 @@ const JUDGE_SPECS = [
   { key: "srate", label: "ひずみ速度",         unit: "s⁻¹",    scale: 1,
     value: (A) => (A.strainRate1 ? A.strainRate1.value : NaN), fmt: (v) => fmtExp(v, 2) },
   { key: "cross", label: "実績クロス変位速度", unit: "mm/min", scale: 1,
-    value: (A) => A.vPlastic,                                  fmt: (v) => fmtNum(v, 2) },
+    value: (A) => A.vCross,                                    fmt: (v) => fmtNum(v, 2) },
   { key: "young", label: "弾性率",             unit: "N/mm²",  scale: 1000,
     value: (A) => (A.youngs ? A.youngs.nmm2 : NaN),             fmt: (v) => fmtNum(v, 0) },
 ];
@@ -201,7 +201,20 @@ function analyze(inp, P) {
     });
   }
 
-  A.series = { time: inp.time, force, stroke: inp.stroke, displacement: inp.displacement, strain, stress, velocity };
+  /* ストローク基準のひずみ。伸び計が破断で止まったときでも試験の最後まで追える。
+     機械のたわみを含むので、規格上のひずみ（伸び計基準）とは別物として扱う。 */
+  let strainStroke = null;
+  if (inp.stroke) {
+    strainStroke = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const v = inp.stroke[i];
+      strainStroke[i] = fin(v) ? (v / P.gaugeLength) * 100 : NaN;
+    }
+    A.basis.strainStroke = `εst = ストローク ÷ ゲージ長 ${fmtNum(P.gaugeLength, 1)} mm × 100（機械のたわみを含む参考値）`;
+  }
+
+  A.series = { time: inp.time, force, stroke: inp.stroke, displacement: inp.displacement,
+               strain, strainStroke, stress, velocity };
 
   /* --- 14.1 引張強さ Rm（最大試験力に対応する応力） --- */
   let maxIndex = 0, maxForce = -Infinity;
@@ -448,33 +461,30 @@ function analyze(inp, P) {
     }
   }
 
-  /* --- 実績クロスヘッド変位速度: 降伏後（主段）のストローク速度の中央値 ---
-     弾性域は応力速度制御で遅く動かすため、試験速度として報告されるのは主段の速度。 */
-  A.vPlastic = NaN;
-  A.vPlasticBasis = "";
-  if (velocity) {
-    let from = A.yieldV ? A.yieldV.index : -1;
-    let fromWhy = "耐力点";
-    if (from < 0) {
-      for (let i = 0; i < n; i++) if (fin(force[i]) && force[i] >= 0.5 * maxForce) { from = i; break; }
-      fromWhy = "試験力が Fmax の 50% を超えた点（耐力点が無いため）";
-    }
-    const to = frMain ? frMain.index : maxIndex;
-    if (from >= 0 && to > from + 2) {
-      const seg = [];
-      for (let i = from; i <= to; i++) if (fin(velocity[i])) seg.push(velocity[i]);
-      const m = median(seg);
-      if (fin(m)) {
-        A.vPlastic = m;
-        A.vPlasticBasis = `${fromWhy}から${frMain ? "破断点" : "最大点"}までの速度の中央値（第 ${from + 1}〜${to + 1} 点・${seg.length} 点）`;
-      }
+  /* --- 実績クロスヘッド変位速度 ---
+     弾性域内に取った中間点 2 点の間の平均クロスヘッド速度。
+       (中間点1_クロスヘッド − 中間点2_クロスヘッド) ÷ (中間点1_時間 − 中間点2_時間) × 60
+     中間点は降伏前の応力レベルで決める（＝直線域の両端。応力バンド linearityLo〜Hi × 耐力応力）。
+     塑性域・破断後は含めない。弾性負荷速度の適合確認に使う値で、試験全体の平均速度ではない。 */
+  A.vCross = NaN;
+  A.vCrossBasis = "";
+  if (A.linear && inp.time && inp.stroke) {
+    const i1 = A.linear.startIdx, i2 = A.linear.cutoffIdx;
+    const dt = inp.time[i2] - inp.time[i1];
+    const ds = inp.stroke[i2] - inp.stroke[i1];
+    if (fin(dt) && dt > 0 && fin(ds)) {
+      A.vCross = (ds / dt) * 60;
+      A.vCrossBasis = `弾性域の中間点 2 点（第 ${i1 + 1} 点・第 ${i2 + 1} 点` +
+        (stress ? `／応力 ${fmtNum(stress[i1], 1)} → ${fmtNum(stress[i2], 1)} N/mm²` : "") +
+        `）の (Δクロスヘッド ${fmtNum(ds, 4)} mm ÷ Δ時間 ${fmtNum(dt, 3)} s) × 60`;
     }
   }
-  if (!fin(A.vPlastic)) {
+  if (!fin(A.vCross)) {
     A.blocked.push({
       what: "実績クロス変位速度",
-      why: velocity ? "耐力点〜破断点の区間が決まらないため算出できません"
-                    : "速度（時間・ストローク）が無いため算出できません",
+      why: !inp.stroke ? "ストロークデータが無いため算出できません"
+        : !inp.time ? "時間データが無いため算出できません"
+        : "弾性域（直線域）が決まらないため中間点 2 点を取れません",
     });
   }
 

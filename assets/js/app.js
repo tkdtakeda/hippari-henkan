@@ -718,6 +718,38 @@ function resultsPanel(e) {
   </div>`;
 }
 
+/**
+ * 各チャネルが「どこまで動いていたか」を出す。
+ * 伸び計は破断で外す／止まることがあり、その場合はストロークだけが最後まで伸びる。
+ * 線図が途中で止まって見えるのはこれが原因なので、数字で確かめられるようにする。
+ */
+function channelEnds(w) {
+  const out = [];
+  const time = w.columns.Time_sec || null;
+  for (const [name, col] of Object.entries(w.columns)) {
+    const n = col.length;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < n; i++) { const v = col[i]; if (!fin(v)) continue; if (v < lo) lo = v; if (v > hi) hi = v; }
+    const span = isFinite(lo) ? hi - lo : 0;
+    /* 「最後に動いた点」＝ 末尾の値から全振幅の 0.2% 以上離れている最後の位置の次。
+       1 サンプルあたりの差で見ると、点数が多いほど差が小さくなって判定できない。 */
+    const tol = Math.max(Math.abs(span) * 0.002, 1e-9);
+    const endV = col[n - 1];
+    let last = 0;
+    for (let i = n - 1; i >= 0; i--) {
+      if (Math.abs(col[i] - endV) > tol) { last = Math.min(i + 1, n - 1); break; }
+    }
+    out.push({
+      name, last, n,
+      lastValue: col[n - 1], min: isFinite(lo) ? lo : NaN, max: isFinite(hi) ? hi : NaN,
+      lastTime: time && fin(time[last]) ? time[last] : NaN,
+      endTime: time && fin(time[n - 1]) ? time[n - 1] : NaN,
+      stalled: last < n - 1 - Math.max(2, Math.round(n * 0.005)),   // 末尾で止まっているか
+    });
+  }
+  return out;
+}
+
 function waveformPanel(e) {
   const w = e.wave;
   const names = Object.keys(w.columns);
@@ -738,6 +770,28 @@ function waveformPanel(e) {
     <div class="card__body card__body--flush"><div class="table-wrap">
       <table class="tbl"><thead><tr><th class="n">#</th>${names.map((n) => `<th class="n">${esc(n)}</th>`).join("")}</tr></thead>
       <tbody>${rows.join("")}</tbody></table></div></div>
+    <div class="card__body">
+      <div class="card__head" style="padding:0 0 var(--sp-2)"><span class="card__title">チャネルの終端</span>
+        <span class="badge">全 <b>${w.points.toLocaleString("ja-JP")}</b> 点</span></div>
+      <div class="table-wrap"><table class="tbl">
+        <thead><tr><th>チャネル</th><th class="n">最終値</th><th class="n">最小 〜 最大</th>
+          <th class="n">最後に動いた点</th><th>状態</th></tr></thead>
+        <tbody>${channelEnds(w).map((c) => `<tr>
+          <td class="k">${esc(c.name)}</td>
+          <td class="n">${fmtNum(c.lastValue, 3)}</td>
+          <td class="n">${fmtNum(c.min, 3)} 〜 ${fmtNum(c.max, 3)}</td>
+          <td class="n">第 ${(c.last + 1).toLocaleString("ja-JP")} 点${fin(c.lastTime) ? `（${fmtNum(c.lastTime, 2)} sec）` : ""}</td>
+          <td>${c.stalled
+            ? statusChip("warn", `第 ${(c.last + 1).toLocaleString("ja-JP")} 点以降は動いていません`)
+            : statusChip("ok", "最後まで動いています")}</td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+      <p class="field__hint" style="margin-top:var(--sp-2)">
+        線図が途中で止まって見えるときは、まずここを見てください。破断で伸び計を外す／止まる装置では
+        <b>Extensometer_mm だけが途中で止まり、Stroke_mm は最後まで伸びます</b>。
+        伸び計基準のひずみ（ε）もそこで止まるため、線図の X 軸に <b>ストローク</b> か
+        <b>ひずみ（ストローク基準）</b> を選ぶと最後まで描けます（データは全点そろっています）。</p>
+    </div>
     <p class="card__note">マーカー 01 00 00 00 00 01 01 の等間隔出現から ${w.points.toLocaleString("ja-JP")} レコードを復元し、
       各マーカー位置からのオフセット（Time_sec −8 / Stroke_mm −4 / Force_N +29 / Extensometer_mm +37）を float32(LE) として読み出しています。
       数値は小数 6 桁に丸めて出力します。${w.dropped && w.dropped.length ? `　不採用列: ${esc(w.dropped.join(", "))}（範囲外または NaN を含む）` : ""}</p>
