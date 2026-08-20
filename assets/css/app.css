@@ -494,6 +494,9 @@ kbd{
 .reason svg{ width:18px; height:18px; color:var(--na); }
 .reason--warn svg{ color:var(--warn); }
 .reason--err svg{ color:var(--err); }
+/* 読み取りに失敗したときの、やり直しボタンを置く行 */
+.reason__act{ display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-3); }
+.reason__act svg{ color:currentColor; }
 
 /* ============================================================
    ドロップ全面オーバーレイ

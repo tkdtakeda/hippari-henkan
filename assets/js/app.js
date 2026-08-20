@@ -94,14 +94,74 @@ function addFiles(list) {
   runConversion();
 }
 
+/* ───────────────── ファイルの読み取り ─────────────────
+ * ブラウザは「ファイルの中身」ではなく「ファイルそのものに手が届かない」ときに
+ * NotReadableError を投げる（他アプリが開いている／クラウドの実体が手元に無い／
+ * 選んだあとに動かされた）。英語の例外文をそのまま出しても直し方が分からないので、
+ * 原因と対処に置き換えて渡す。
+ */
+function readViaFileReader(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = () => reject(fr.error || new Error("FileReader が失敗しました"));
+    fr.readAsArrayBuffer(file);
+  });
+}
+
+/**
+ * 一時的なロックやクラウドの取り寄せ待ちなら、少し置くと読めることがある。
+ * arrayBuffer() が失敗したら、間を置いて FileReader（別経路）で 1 回だけ試す。
+ */
+async function readFileBytes(file) {
+  try {
+    return new Uint8Array(await file.arrayBuffer());
+  } catch (err) {
+    await sleep(300);
+    try {
+      return new Uint8Array(await readViaFileReader(file));
+    } catch (_) {
+      throw err;                                      // 最初の例外の方が原因を表している
+    }
+  }
+}
+
+/** ファイルが読めなかったときの、原因の見当と直し方 */
+function fileReadHint(err) {
+  const name = err && err.name ? err.name : "";
+  const head = name === "NotFoundError"
+    ? "選んだファイルが、いまその場所にありません。"
+    : "ファイルの中身ではなく、ファイルそのものに手が届きませんでした。";
+  return `${head}多いのは次の 3 つです。`
+    + "① そのファイルを別のアプリ（TrapeziumX など）で開いたままにしている。"
+    + "② OneDrive / SharePoint / ネットワークドライブ / USB 上にあり、実体が手元に降りていない"
+    + "（エクスプローラーで右クリック →「このデバイス上で常に保持する」でローカルに落としてから入れてください）。"
+    + "③ 選んだあとにファイルが移動・更新・削除された（試験機が書き込み中など）。"
+    + "下の「もう一度読む」を押すか、ファイルを入れ直すと直ることがあります。"
+    + `（ブラウザからの応答: ${name || "不明"}）`;
+}
+
 /* ───────────────── 変換パイプライン（§2） ───────────────── */
 async function processEntry(entry) {
   entry.status = "running";
+  entry.error = null;
+  entry.errorKind = null;
   renderRail(); renderCta();
   await sleep(0);                                     // 画面に「変換中」を出してから重い処理へ
   try {
-    const buf = await entry.file.arrayBuffer();
-    const data = new Uint8Array(buf);
+    let data;
+    try {
+      data = await readFileBytes(entry.file);
+    } catch (err) {
+      entry.errorKind = "read";                       // 「もう一度読む」を出す合図
+      throw new Error(fileReadHint(err));
+    }
+    if (!data.length) {
+      entry.errorKind = "read";
+      throw new Error("ファイルの中身が空でした（0 バイト）。"
+        + "試験機が書き込み中のファイルや、クラウド上の実体が無いファイルでも起こります。"
+        + "エクスプローラーでサイズを確かめてから、入れ直してください。");
+    }
     entry.crc = crc32(data);
     entry.size = data.length;
 
@@ -620,7 +680,13 @@ function singleHtml(e) {
 
   if (e.status !== "done") {
     const body = e.status === "error"
-      ? `<div class="reason reason--err">${ICON.err}<div><b>変換できませんでした</b>${esc(e.error || "")}</div></div>`
+      ? `<div class="reason reason--err">${ICON.err}<div><b>変換できませんでした</b>${esc(e.error || "")}
+          ${e.errorKind === "read"
+            ? `<div class="reason__act">
+                 <button class="chip" data-act="retry">${ICON.reset}<span>もう一度読む</span></button>
+                 <button class="chip" data-act="repick"><span>ファイルを選び直す</span></button>
+               </div>`
+            : ""}</div></div>`
       : e.status === "running"
         ? `<div class="reason">${ICON.busy}<div><b>変換中です</b>解析が終わるとここに結果が表示されます。</div></div>`
         : `<div class="reason">${ICON.wait}<div><b>まだ変換していません</b>右上の主要ボタン「${esc(ctaState().label)}」を押すと、このファイルを含めてまとめて変換します。</div></div>`;
@@ -1744,6 +1810,17 @@ function onWorkspaceClick(ev) {
       scheduleRender(false);
       break;
     }
+    /* ── 読み取りに失敗したファイル ── */
+    case "retry": {
+      if (!e) break;
+      e.status = "queued"; e.error = null; e.errorKind = null; e.outputs = [];
+      renderAll();
+      runConversion();                     // 参照が生きていれば、これで読めることがある
+      break;
+    }
+    case "repick":
+      picker.click();                      // 参照が切れているときは選び直すしかない
+      break;
     case "rp-cols":
       state.reportColsOpen = !state.reportColsOpen;
       scheduleRender(false);
