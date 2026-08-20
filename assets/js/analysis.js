@@ -587,7 +587,7 @@ function analyze(inp, P) {
   A.proof02File = A.elasticLineFile.available ? A.elasticLineFile.proofPoint : null;
   if (!A.elasticLineFile.available) {
     A.blocked.push({
-      what: "装置方式の弾性直線（耐力 20〜60%）",
+      what: "装置方式の弾性直線（ファイル計算区間）",
       why: A.elasticLineFile.reasons[0] || "変換元ファイルから 20% 点・60% 点を復元できません",
     });
   }

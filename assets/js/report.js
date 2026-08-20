@@ -575,7 +575,7 @@ function mountReportChart(e) {
     series: [{ ...base, color: cssVar("--chart-line"), width: 1.6, primary: true }],
     markers: [], bands: [],
   };
-  /* 装置方式（耐力 20〜60%）の弾性直線・0.2% オフセット線・耐力点を固定で重ねる（別紙 §8.1）。
+  /* 装置方式（ファイル計算区間）の弾性直線・0.2% オフセット線・耐力点を固定で重ねる（別紙 §17.1）。
      ここは操作できない。印刷・PDF でも同じ構成になる。 */
   addReportElastic(spec, A);
   /* 注釈は 最大点 Rm と、変換元ファイルの破断点だけ。

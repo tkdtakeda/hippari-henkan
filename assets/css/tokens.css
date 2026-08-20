@@ -137,6 +137,7 @@
   --chart-ov-pad-l:34; --chart-ov-pad-b:16;      /* ミニマップは軸ラベルを省く */
   --chart-fs:11;
   --h-overview:78px; --h-overview-min:44px; --h-overview-max:220px;
+  --h-chart-min:160px;                          /* 線図が潰れない下限（主役を消さない） */
   --chart-ink: var(--n-700);
   --chart-grid: var(--n-200);
   --chart-axis: var(--n-400);

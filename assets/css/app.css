@@ -235,7 +235,7 @@ button,input,select,textarea{ font:inherit; color:inherit; }
    （これが無いと表やチップの実寸で列が広がり、ページ全体が横スクロールしてしまう） */
 .stage > *, .ws > *, .cols > *, .charts > *, .charts__row > *, .card, .chartcard, .panel > *{ min-width:0; }
 .ws{
-  display:grid; grid-template-rows:auto auto auto minmax(0,1fr); min-height:0; min-width:0;
+  display:grid; grid-template-rows:auto auto minmax(0,1fr); min-height:0; min-width:0;
   background:var(--surface); border:1px solid var(--border); border-radius:var(--r-3);
   box-shadow:var(--sh-1); overflow:hidden;
 }
@@ -357,6 +357,13 @@ button.verdict__head:focus-visible{ outline:2px solid var(--focus); outline-offs
 }
 .tab:disabled{ opacity:.4; cursor:not-allowed; }
 .tab .count{ font-variant-numeric:tabular-nums; opacity:.75; }
+/* 解析タブの数字は「確認したい件数」。色だけでなく丸で囲って形でも区別する（§3） */
+.tab .count--warn,.tab .count--ng{
+  display:inline-grid; place-items:center; min-width:1.35em; padding:0 .35em;
+  border-radius:var(--r-pill); opacity:1; font-weight:var(--fw-bold);
+}
+.tab .count--warn{ background:var(--warn); color:var(--text-on-dark); }
+.tab .count--ng{ background:var(--err); color:#fff; }
 .tabs__note{
   padding:var(--sp-1) var(--sp-4); font-size:var(--fs-1); color:var(--text-muted);
   background:var(--surface-2); border-bottom:1px solid var(--border);
@@ -465,7 +472,9 @@ tr.rowlink{ cursor:pointer; }
 .charts__row{ display:grid; grid-template-columns:minmax(0,1fr); gap:var(--gap); min-height:0; }
 .charts__row.is-split{ grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); }
 @media (max-width:1180px){ .charts__row.is-split{ grid-template-columns:minmax(0,1fr); grid-auto-rows:minmax(220px,1fr); } }
-.chartcard{ position:relative; display:grid; grid-template-rows:auto minmax(0,1fr) auto auto; min-height:0; }
+/* 線図は主役なので、補助表示を全部開いても潰れない下限を持たせる。
+   あふれるぶんは補助表示の側（.chartfoot）を内側でスクロールさせて吸収する。 */
+.chartcard{ position:relative; display:grid; grid-template-rows:auto minmax(var(--h-chart-min),1fr) auto; min-height:0; }
 
 /* キャンバスは絶対配置にして「自分の幅がグリッド列幅を押し広げる」ループを断つ */
 .chart-host{ position:relative; min-height:0; min-width:0; overflow:hidden; cursor:crosshair; }
@@ -491,18 +500,22 @@ tr.rowlink{ cursor:pointer; }
 .chart-zoomstate .badge{ background:var(--surface); box-shadow:var(--sh-1); }
 
 /* ミニマップ */
-.overview{
-  display:grid; grid-template-rows:auto minmax(0,1fr); min-height:0;
+/* 線図の下の補助表示（全体図・凡例）。どちらも既定はたたみ、線図に面積を渡す（§1）。
+   別々の帯に分けると 2 段ぶん取られるので、開閉ボタンは 1 本の帯にまとめる。 */
+.chartfoot{
   border-top:1px solid var(--border); background:var(--surface-2);
+  max-height:min(42vh,340px); overflow:auto;
 }
-.overview__bar{
+.chartfoot__bar{
   display:flex; align-items:center; gap:var(--sp-2);
-  padding:2px var(--sp-3); font-size:var(--fs-1); color:var(--text-muted);
+  padding:var(--sp-1) var(--sp-3); font-size:var(--fs-1); color:var(--text-muted);
 }
-.overview__bar b{ color:var(--text); font-weight:var(--fw-med); }
-.overview__host{ position:relative; min-height:0; height:var(--h-overview); cursor:grab; }
+.chartfoot__hint{ min-width:0; }
+.overview__host{ position:relative; min-height:0; height:var(--h-overview); cursor:grab; display:none; }
 .overview__host:active{ cursor:grabbing; }
-.overview.is-collapsed .overview__host{ display:none; }
+.chartfoot.ov-open .overview__host{ display:block; }
+.chartfoot .legend{ display:none; }
+.chartfoot.lg-open .legend{ display:flex; }
 
 /* 作図ツールバー（設定と表示範囲を 2 段にまとめて縦を節約する） */
 .chartbar{
@@ -522,6 +535,10 @@ tr.rowlink{ cursor:pointer; }
   color:var(--warn-text); font-size:var(--fs-2);
 }
 .chartbar__note--warn svg{ width:14px; height:14px; color:var(--warn); flex:none; margin-top:1px; }
+/* 中身をたたんでいても「要確認がある」ことは見えるようにする */
+.chip--warn{ border-color:var(--warn); background:var(--warn-bg); color:var(--warn-text); }
+.chip--warn svg{ color:var(--warn); }
+.chip--warn .chip__size{ color:var(--warn-text); }
 .chartbar__row .spacer{ margin-left:auto; }
 .chartbar .rangebar[hidden]{ display:none; }
 .chartbar .field__label{ white-space:nowrap; }

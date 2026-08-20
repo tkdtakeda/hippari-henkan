@@ -22,7 +22,6 @@ const state = {
   params: { ...DEFAULT_PARAMS },
   sort: { key: "name", dir: 1 },
   reportZoom: "fit",           // レポートの用紙: 'fit'（器に合わせる）| 'actual'（原寸）
-  verdictOpen: null,           // 判定バナーの開閉。null = 既定（不合格のときだけ開く）
   reportCols: defaultReportCols(),  // レポート表に出す列の key（既定は全部）
   reportColsOpen: false,       // 「表示項目」の一覧を開いているか（再描画をまたいで保つ）
   chart: {
@@ -40,7 +39,9 @@ const state = {
     showProof: true,         // 耐力点（選択方式の交点）
     compareCalc: false,      // 装置方式のときに解析回帰線を参考色で重ねる
     side: false,           // 時間-応力線図を並べて表示するか
-    ovCollapsed: false,    // 全体図（ミニマップ）をたたむか
+    ovCollapsed: true,     // 全体図（ミニマップ）。線図に面積を渡すため既定はたたむ
+    legendOpen: false,     // 凡例。マーカーには線図上に文字が出るので既定はたたむ
+    noteOpen: false,       // 耐力線の根拠。警告があるときはボタン側で知らせる
     view: null,            // 主図の表示範囲（null = 全体表示）
     viewSub: null,         // 副図の表示範囲
   },
@@ -672,6 +673,13 @@ function tabAvailability(e) {
   return { a, reasons };
 }
 function tabCount(e, key) {
+  /* 解析タブは、引っかかっている項目の件数を出す（0 件なら数字を出さない）。
+     判定バナーを外した代わりに、ここが「なぜ」への入口になる。 */
+  if (key === "analysis") {
+    const v = e.analysis && e.analysis.verdict;
+    const n = v ? verdictIssues(v).length : 0;
+    return n || null;
+  }
   switch (key) {
     case "results": return e.results ? e.results.length : 0;
     case "waveform": return e.wave && e.wave.ok ? e.wave.points : 0;
@@ -721,15 +729,21 @@ function singleHtml(e) {
   const { a, reasons } = tabAvailability(e);
   if (!a[state.tab]) state.tab = "report" in a && a.report ? "report" : "analysis";
 
+  const vLevel = e.analysis && e.analysis.verdict ? e.analysis.verdict.level : null;
   const tabsHtml = TABS.map((t) => {
     const c = tabCount(e, t.key);
-    const label = c == null ? t.label : `${t.label} <span class="count">${c.toLocaleString("ja-JP")}</span>`;
+    /* 解析タブの数字だけは「引っかかっている件数」なので、重さを色でも出す（§3 は文字も添える） */
+    const cls = t.key === "analysis" && vLevel && vLevel !== "ok" ? ` count--${vLevel}` : "";
+    const cTitle = t.key === "analysis" && c ? ` title="${esc(`確認したい項目が ${c} 件あります`)}"` : "";
+    const label = c == null ? t.label
+      : `${t.label} <span class="count${cls}"${cTitle}>${c.toLocaleString("ja-JP")}</span>`;
     return `<button class="tab" id="tab_${t.key}" role="tab" data-tab="${t.key}" tabindex="${state.tab === t.key ? 0 : -1}"
       aria-selected="${state.tab === t.key}" ${a[t.key] ? "" : "disabled"}>${label}</button>`;
   }).join("");
 
-  const v = e.analysis && e.analysis.verdict ? e.analysis.verdict : { level: "na", label: "解析なし", checks: [] };
-
+  /* 判定バナーは置かない。合否は左の一覧（ファイルごとの状態チップ）で分かるので、
+     ここに同じものを出すと 1 画面に同じ情報が 2 つ並び、線図の面積を食う（基本設計 §1）。
+     不合格の内訳は「解析」タブに置き、タブの数字で件数だけ知らせる。 */
   return `<div class="ws">
     <div class="ws__head">
       <div class="ws__id">
@@ -737,7 +751,6 @@ function singleHtml(e) {
         <div class="ws__meta">${badges.join("")}</div>
       </div>${seg}
     </div>
-    ${verdictBanner(e, v)}
     <div>
       <div class="tabs" role="tablist">${tabsHtml}</div>
       ${reasons.length ? `<p class="tabs__note">使えないタブの理由: ${esc(reasons.join("／"))}</p>` : ""}
@@ -745,6 +758,7 @@ function singleHtml(e) {
     <div class="panel${FIXED_TABS.has(state.tab) ? " panel--fixed" : ""}">${panelHtml(e)}</div>
   </div>`;
 }
+
 
 /* ============================================================================
  * 判定バナー
@@ -768,11 +782,6 @@ function verdictIssues(v) {
   return (v.checks || []).filter((c) => !c.skip && c.level !== "ok")
     .slice().sort((a, b) => VERDICT_RANK[a.level] - VERDICT_RANK[b.level]);
 }
-/** 開いているか。既定は「不合格のときだけ開く」。ユーザーが触ったらその指定に従う。 */
-function verdictIsOpen(v) {
-  return state.verdictOpen == null ? v.level === "ng" : !!state.verdictOpen;
-}
-
 /**
  * 内訳 1 件。根拠・区分・行き先をそろえて出す。
  * 先頭の 1 件は助言を「次にすること」に出しているので、ここでは繰り返さない。
@@ -800,61 +809,6 @@ function verdictItemHtml(c, i, avail) {
     </div>
     <div class="vitem__act">${buttons}</div>
   </li>`;
-}
-
-function verdictBanner(e, v) {
-  const vIcon = { ok: ICON.ok, warn: ICON.warn, ng: ICON.err, na: ICON.na }[v.level];
-  const issues = verdictIssues(v);
-
-  /* 解析そのものができていないときは、開く中身が無い。理由だけを 1 行で出す。 */
-  if (!issues.length || v.level === "na") {
-    const why = v.level === "na"
-      ? (e.analysisBlock || "解析に必要なデータが揃っていません")
-      : "確認項目はすべて合格です";
-    return `<div class="verdict verdict--${v.level}">
-      <div class="verdict__head">
-        <span class="verdict__icon">${vIcon}</span>
-        <span class="verdict__label">判定: ${esc(v.label)}</span>
-        <span class="verdict__why truncate" title="${esc(why)}">${esc(why)}</span>
-      </div>
-    </div>`;
-  }
-
-  const open = verdictIsOpen(v);
-  const top = issues[0];
-  const { a: avail } = tabAvailability(e);
-  /* 見出しの 1 行。件数はこちらで数えて文言に入れる（§2 探させない・数えさせない） */
-  const head = `${top.cause ? `［${top.cause}］` : ""}${top.label}`
-    + (issues.length > 1 ? ` ほか ${issues.length - 1} 件` : "");
-  const topTab = top.go && top.go.tab;
-  const topCan = topTab && avail[topTab] !== false;
-
-  return `<div class="verdict verdict--${v.level}">
-    <button class="verdict__head" data-act="verdict-toggle" aria-expanded="${open}" aria-controls="verdictBody">
-      <span class="verdict__icon">${vIcon}</span>
-      <span class="verdict__label">判定: ${esc(v.label)}</span>
-      <span class="verdict__why truncate">${esc(head)}</span>
-      <span class="verdict__more">${open ? "閉じる" : "内訳を見る"}${ICON[open ? "arrowU" : "arrowD"]}</span>
-    </button>
-    <div class="verdict__body" id="verdictBody" ${open ? "" : "hidden"}>
-      <p class="verdict__next">
-        <b>次にすること</b>
-        <span>${esc(top.advice || `${top.label} を確認してください`)}</span>
-        ${topTab ? `<button class="chip" data-act="verdict-go" data-tab="${esc(topTab)}"
-            ${top.go.jump ? `data-j="${esc(top.go.jump)}"` : ""}
-            ${topCan ? "" : `disabled title="${esc(`${GO_LABEL[topTab]}タブが使えないため飛べません`)}"`}
-          >${ICON.arrowR}<span>${esc(GO_LABEL[topTab])}を開く</span></button>` : ""}
-      </p>
-      <ul class="verdict__list">
-        ${issues.map((c, i) => verdictItemHtml(c, i, avail)).join("")}
-      </ul>
-      <p class="verdict__legend"><b>区分の見かた</b>
-        <span><b>試験</b> 装置の測定値が判定範囲の外。試験条件そのものの問題</span>
-        <span><b>データ</b> 変換元ファイルに値が足りない／解析できない</span>
-        <span><b>設定</b> このツールの設定値が実態と合っていない</span>
-      </p>
-    </div>
-  </div>`;
 }
 
 /* ---- パネル ---- */
@@ -1380,6 +1334,7 @@ function chartbarHtml(A, K) {
         ${jumps.map((j) => `<button class="chip btn--sm" data-act="jump" data-j="${j.k}" ${j.ok ? "" : `disabled title="${esc(j.why)}"`}>${esc(j.label)}</button>`).join("")}
       </span>
       <span class="spacer"></span>
+      ${isSS ? elasticNoteToggle(A) : ""}
       <button class="chip btn--sm" data-act="range-toggle" aria-expanded="${rangeOpen}" aria-controls="rangeRow">
         <span>表示範囲を数値で指定</span>${ICON[rangeOpen ? "arrowU" : "arrowD"]}
       </button>
@@ -1409,7 +1364,7 @@ function chartbarHtml(A, K) {
         <span><kbd>ダブルクリック</kbd> 全体</span>
       </span>
     </div>
-    ${isSS ? elasticNoteHtml(A) : ""}
+    ${isSS && state.chart.noteOpen ? elasticNoteHtml(A) : ""}
     ${jumpWhy ? `<p class="chartbar__note">押せない拡大ボタンの理由: ${esc(jumpWhy)}</p>` : ""}
     ${!isSS ? `<p class="chartbar__note">注釈（耐力線・計算区間端点・耐力点・破断点×）は ひずみ-応力線図のときに重ねます。</p>` : ""}
   </div>`;
@@ -1433,16 +1388,19 @@ function chartCardHtml(A, K) {
          aria-label="${esc(title)} の線図。矢印キーで移動、+ と − で拡大縮小、0 で全体表示。">
       <div class="chart-zoomstate" id="zoomState"></div>
     </div>
-    <div class="overview${C.ovCollapsed ? " is-collapsed" : ""}" id="ovWrap">
-      <div class="overview__bar">
-        <b>全体図</b>
-        <span>${C.ovCollapsed ? "たたんでいます" : "枠をドラッグすると表示範囲が動きます"}</span>
-        <span style="margin-left:auto"></span>
-        <button class="chip btn--sm" data-act="ovtoggle">${C.ovCollapsed ? "開く" : "たたむ"}</button>
+    <div class="chartfoot${C.ovCollapsed ? "" : " ov-open"}${C.legendOpen ? " lg-open" : ""}">
+      <div class="chartfoot__bar">
+        <button class="chip btn--sm" data-act="ovtoggle" aria-expanded="${!C.ovCollapsed}" aria-controls="chartOv">
+          <span>全体図</span>${ICON[C.ovCollapsed ? "arrowD" : "arrowU"]}
+        </button>
+        <button class="chip btn--sm" data-act="legendtoggle" aria-expanded="${C.legendOpen}" aria-controls="legend1">
+          <span>凡例</span><b class="chip__size" id="legendCount"></b>${ICON[C.legendOpen ? "arrowU" : "arrowD"]}
+        </button>
+        <span class="chartfoot__hint">${C.ovCollapsed ? "" : "全体図の枠をドラッグすると表示範囲が動きます"}</span>
       </div>
       <div class="overview__host" id="chartOv"></div>
+      <div class="legend" id="legend1"></div>
     </div>
-    <div class="legend" id="legend1"></div>
   </div>`;
 }
 
@@ -1567,7 +1525,7 @@ function selectedFracturePoint(e, A) {
  * 耐力線の方式選択（別紙: 耐力線・弾性率計算区間表示 §7.1）
  *
  * 「回帰直線・0.2% 線」の単一チェックを、方式（どの直線を正とするか）と
- * 表示要素（何を重ねるか）に分ける。既定は装置方式（耐力 20〜60% の 2 点直線）。
+ * 表示要素（何を重ねるか）に分ける。既定は装置方式（ファイルの計算区間を回帰した直線）。
  * 装置方式を復元できないファイルでは選べないので、無効にしたうえで理由を出す（§4）。
  * ==========================================================================*/
 /** 計算区間を単位つきで書く（例: 4,667〜14,001 N） */
@@ -1586,6 +1544,27 @@ function elasticMethodOf(A) {
 /** フォールバックしているか（画面に明示する） */
 function elasticFellBack(A) {
   return state.chart.elasticMethod === "file" && elasticMethodOf(A) === "calc";
+}
+
+/**
+ * 根拠の開閉ボタン。中身は畳んでいても、**警告があることだけは必ず見える**ようにする。
+ * 畳めるのは「読まなくても作業できる説明」であって、注意が要る事実は畳まない（§3・§4）。
+ */
+function elasticNoteToggle(A) {
+  const L = A && A.elasticLineFile;
+  const open = !!state.chart.noteOpen;
+  const method = elasticMethodOf(A);
+  let warn = 0;
+  if (elasticFellBack(A)) warn = 1;
+  else if (method === "file" && L && L.available) warn = L.reasons.length + (L.proofPoint ? 0 : 1);
+  const head = method === "file" && L && L.available ? spanText(L)
+    : (method === "calc" ? "解析方式（参考）" : "");
+  return `<button class="chip btn--sm${warn ? " chip--warn" : ""}" data-act="note-toggle"
+      aria-expanded="${open}" aria-controls="elasticNote"
+      title="${esc(warn ? `確認したいことが ${warn} 件あります` : "この線を引いた根拠を出します")}">
+    ${warn ? ICON.warn : ""}<span>根拠${head ? `（${esc(head)}）` : ""}</span>
+    ${warn ? `<b class="chip__size">要確認 ${warn}</b>` : ""}${ICON[open ? "arrowU" : "arrowD"]}
+  </button>`;
 }
 
 /**
@@ -1615,8 +1594,9 @@ function elasticNoteHtml(A) {
     const warn = [];
     if (!L.proofPoint) warn.push("0.2% オフセット線が曲線と交わりません（交点未検出。近似では代用しません）");
     for (const r of L.reasons) warn.push(r);
-    return `<p class="chartbar__note chartbar__facts">${facts}</p>`
-      + (warn.length ? `<p class="chartbar__note chartbar__note--warn">${ICON.warn}<span>${esc(warn.join("／"))}</span></p>` : "");
+    return `<div id="elasticNote"><p class="chartbar__note chartbar__facts">${facts}</p>`
+      + (warn.length ? `<p class="chartbar__note chartbar__note--warn">${ICON.warn}<span>${esc(warn.join("／"))}</span></p>` : "")
+      + `</div>`;
   }
   if (method === "calc" && A && A.linear) {
     return `<p class="chartbar__note chartbar__facts">${
@@ -1865,6 +1845,9 @@ function mountCharts(e) {
   chartRefs.main = c1;
   const lg1 = cq("#legend1");
   if (lg1) lg1.innerHTML = legend.join("");
+  /* たたんでいても何項目あるかは出す（開く価値があるか分かるように・§2） */
+  const lgN = cq("#legendCount");
+  if (lgN) lgN.textContent = `${legend.length} 項目`;
 
   /* --- ミニマップ（全体図）: 常に全体を描き、いま見ている範囲を枠で示す --- */
   let ov = null;
@@ -2082,7 +2065,6 @@ elRail.addEventListener("click", (ev) => {
   state.selectedId = Number(b.dataset.id);
   if (state.view === "summary") state.view = "single";
   state.chartMax = null;
-  state.verdictOpen = null;                // 別のファイルには前の開閉を持ち込まない
   state.chart.view = null;                 // 別のファイルには前の拡大範囲を持ち込まない
   state.chart.viewSub = null;
   renderAll();
@@ -2188,13 +2170,6 @@ function onWorkspaceClick(ev) {
       break;
     }
     /* ── 判定バナー ── */
-    case "verdict-toggle": {
-      const e2 = selected();
-      const v = e2 && e2.analysis ? e2.analysis.verdict : null;
-      state.verdictOpen = !(v ? verdictIsOpen(v) : false);
-      scheduleRender(false);
-      break;
-    }
     case "verdict-go": {
       const tab = t.dataset.tab;
       if (!tab) break;
@@ -2218,14 +2193,21 @@ function onWorkspaceClick(ev) {
       state.chart.rangeOpen = !state.chart.rangeOpen;
       scheduleRender(false);
       break;
+    case "note-toggle":
+      state.chart.noteOpen = !state.chart.noteOpen;
+      scheduleRender(false);
+      break;
+    case "legendtoggle":
+      state.chart.legendOpen = !state.chart.legendOpen;
+      scheduleRender(false);
+      break;
     case "verdict-settings":
       syncSettingsInputs();
       dlg.showModal();
       break;
-    case "verdict-open":                   // レポートの判定チップ → 単票の内訳へ
+    case "verdict-open":                   // レポートの判定チップ → 単票 › 解析 の内訳へ
       state.view = "single";
       state.tab = "analysis";
-      state.verdictOpen = true;
       scheduleRender(false);
       break;
     /* ── 読み取りに失敗したファイル ── */
