@@ -412,12 +412,22 @@ function analyze(inp, P) {
     A.blocked.push({ what: "伸び（島津法）", why: "時間データが無いため 1 秒間の低下率を評価できません" });
   }
 
-  /* 伸び = 採用した破断点のひずみ（方式A 優先） */
+  /* 伸び ＝ 変換元ファイルに記録された 破断点_変位(ひずみ) を真値として採る。
+     波形からの計算値（式①→②法／島津法）は参考で、破断記録の有無や丸めで数 pt ずれるため、
+     ファイル記録値がある限りそちらを使う（レポートの表と解析カードを一致させる）。
+     ファイルに値が無いときだけ、検出した破断点のひずみへ落とす（方式A 優先）。 */
   A.elongation = null;
   const frMain = A.fractureA || A.fractureB;
-  if (frMain && strain && fin(frMain.strain)) {
+  if (inp.fileElong && fin(inp.fileElong.value)) {
     A.elongation = {
-      value: frMain.strain,
+      value: inp.fileElong.value, src: "file",
+      method: "変換元ファイルの記録値",
+      index: frMain ? frMain.index : null,
+      basis: `「${inp.fileElong.label}」（装置が出した答え）`,
+    };
+  } else if (frMain && strain && fin(frMain.strain)) {
+    A.elongation = {
+      value: frMain.strain, src: "calc",
       method: A.fractureA ? "式①→②法" : "島津法",
       index: frMain.index, basis: frMain.basis,
     };

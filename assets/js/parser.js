@@ -56,7 +56,29 @@ function detectFormat(data, filename) {
   return { fmt: "xtux", basis: `拡張子 ${ext || "(なし)"} による判定（マジック未検出）` };
 }
 
-/* ───────────────── 結果サマリー（§5.1 xtux：順序構造） ───────────────── */
+/* ───────────────── 結果サマリー（§5.1 xtux：順序構造） ─────────────────
+ * ヘッダ（名前／パラメータ／合否判定／単位）のあとに「ラベル行」が並び、その後ろに
+ * 「値の列」が同じ順で並ぶ。ラベル行は単位語（%, N, N/mm2 …）で 1 行ずつ区切れる。
+ *
+ * ★ パラメータの中には数値が入る（例: 破断点_変位(ひずみ) の「MAXの%レベル 70」）。
+ *   数値を見たら即「値の列の始まり」と見なすと、そこでラベル行の収集が止まり、
+ *   破断点_変位(ひずみ) の行そのものが落ちて、以降の値も 1 つずつずれる。
+ *   → 行の途中に出る数値はパラメータとして扱う（下の isParamNumber）。
+ */
+
+/**
+ * 位置 k の数値トークンが「行の途中のパラメータ」かどうか。
+ * パラメータの数値は同じ行の単位語がすぐ後ろに来る（MAXの%レベル → 70 → %）。
+ * 値の列に入ったあとは数値が並ぶだけで、単位語は現れない。
+ */
+function isParamNumber(toks, k, lookahead = 3) {
+  for (let q = k + 1; q < Math.min(toks.length, k + 1 + lookahead); q++) {
+    if (UNITS.has(toks[q])) return true;
+    if (toks[q] === "名前") return false;
+  }
+  return false;
+}
+
 function parseResultsXtux(tokens) {
   const toks = tokens.map((t) => t.text);
   const res = [];
@@ -70,7 +92,10 @@ function parseResultsXtux(tokens) {
       let cur = [];
       while (k < toks.length) {
         const t = toks[k];
-        if (NUM_RE.test(t) || t === "名前") break;
+        if (t === "名前") break;
+        /* 行の切れ目（cur が空）に立っている数値だけが「値の列」の始まり。
+           行の途中の数値は、その行のパラメータとして取り込む。 */
+        if (NUM_RE.test(t) && !(cur.length && isParamNumber(toks, k))) break;
         cur.push(t);
         if (UNITS.has(t)) {
           rows.push([cur[0], t, cur.slice(1, -1).join(" ").trim()]);
@@ -110,43 +135,45 @@ function nearestUnit(unitsSorted, voff) {
   return unit;
 }
 /**
- * 値アンカー ([\x01-\x0f])(-?[0-9][0-9.\-]{0,14})\x00[\x01\x02]\x00\x00\x00 を
- * バイト列上で直接走査する（group1 の長さ整合チェック込み ＝ Python 版と等価）。
+ * 値アンカーが位置 i から始まっていれば { val, na } を返す（違えば null）。
+ *   数値   … [長さ 01–0F][ -?[0-9][0-9.\-]{0,14} ] 00 [01|02] 00 00 00
+ *   未算出 … [03]        [ "-.-" ]                  00 [01|02] 00 00 00
+ * 長さプレフィックスと値の長さが合っていることまで見る（Python 版の group1 照合と等価）。
  */
+function valueAnchorAt(d, i) {
+  const L = d[i];
+  if (L === 0x03 && i + 8 < d.length &&
+      d[i + 1] === 0x2D && d[i + 2] === 0x2E && d[i + 3] === 0x2D &&
+      d[i + 4] === 0x00 && (d[i + 5] === 0x01 || d[i + 5] === 0x02) &&
+      d[i + 6] === 0x00 && d[i + 7] === 0x00 && d[i + 8] === 0x00) {
+    return { val: "N/A", na: true };                         // 装置が「未算出」と書いた値
+  }
+  if (L < 0x01 || L > 0x0F) return null;
+  const end = i + 1 + L;
+  if (end + 5 > d.length) return null;
+  // 末尾 \x00 [\x01|\x02] \x00 \x00 \x00
+  if (d[end] !== 0x00 || (d[end + 1] !== 0x01 && d[end + 1] !== 0x02) ||
+      d[end + 2] !== 0x00 || d[end + 3] !== 0x00 || d[end + 4] !== 0x00) return null;
+  // 値本体 -?[0-9][0-9.\-]{0,14}
+  let p = i + 1;
+  if (d[p] === 0x2D) p++;                                    // 先頭の '-'
+  if (p >= end || !isDigit(d[p])) return null;               // 続く 1 文字は数字
+  for (p++; p < end; p++) {
+    const b = d[p];
+    if (!(isDigit(b) || b === 0x2E || b === 0x2D)) return null;
+  }
+  let s = "";
+  for (let q = i + 1; q < end; q++) s += String.fromCharCode(d[q]);
+  return { val: s, na: false };
+}
+
+/** 値アンカーをバイト列上で直接走査する（オフセット昇順）。 */
 function scanVtavAnchors(d) {
   const hits = [];
-  const n = d.length;
-  for (let i = 0; i + 6 < n; i++) {
-    const L = d[i];
-    if (L < 0x01 || L > 0x0F) continue;
-    const end = i + 1 + L;
-    if (end + 5 > n) continue;
-    // 末尾 \x00 [\x01|\x02] \x00 \x00 \x00
-    if (d[end] !== 0x00 || (d[end + 1] !== 0x01 && d[end + 1] !== 0x02) ||
-        d[end + 2] !== 0x00 || d[end + 3] !== 0x00 || d[end + 4] !== 0x00) continue;
-    // 値本体 -?[0-9][0-9.\-]{0,14}
-    let p = i + 1;
-    if (d[p] === 0x2D) p++;                                  // 先頭の '-'
-    if (p >= end || !isDigit(d[p])) continue;                // 続く 1 文字は数字
-    p++;
-    let ok = true;
-    for (; p < end; p++) {
-      const b = d[p];
-      if (!(isDigit(b) || b === 0x2E || b === 0x2D)) { ok = false; break; }
-    }
-    if (!ok) continue;
-    let s = "";
-    for (let q = i + 1; q < end; q++) s += String.fromCharCode(d[q]);
-    hits.push({ off: i, val: s, na: false });
+  for (let i = 0; i < d.length; i++) {
+    const a = valueAnchorAt(d, i);
+    if (a) hits.push({ off: i, val: a.val, na: a.na });
   }
-  // 未算出 (N/A) アンカー \x03 "-.-" \x00 [\x01\x02] \x00\x00\x00
-  for (let i = 0; i + 8 < n; i++) {
-    if (d[i] !== 0x03 || d[i + 1] !== 0x2D || d[i + 2] !== 0x2E || d[i + 3] !== 0x2D) continue;
-    if (d[i + 4] !== 0x00 || (d[i + 5] !== 0x01 && d[i + 5] !== 0x02) ||
-        d[i + 6] !== 0x00 || d[i + 7] !== 0x00 || d[i + 8] !== 0x00) continue;
-    hits.push({ off: i, val: "N/A", na: true });
-  }
-  hits.sort((a, b) => a.off - b.off);
   return hits;
 }
 function parseResultsVtav(data, tokens) {
@@ -173,6 +200,112 @@ function parseResultsVtav(data, tokens) {
     res.push({ label: pick.text, unit: nearestUnit(units, h.off), value: h.val, param: "" });
   }
   return res;
+}
+
+/* ============================================================================
+ * 破断点_変位(ひずみ)（＝「伸び」）の抜き出し
+ *
+ * 【大前提】「伸び」の真値は、ファイルに記録された結果サマリー値 `破断点_変位(ひずみ)`。
+ * 波形からの計算値（式①→②法／島津法）は参考扱いで、ファイル記録値がある限り
+ * そちらを優先する（計算値は破断記録の有無や丸めで数 pt ずれる）。
+ *
+ * 同じラベル名でも vtav と xtux で格納構造がまったく違うので、判定後に使い分ける。
+ *
+ *  vtav … UTF-8・バイトアンカー方式
+ *    1. 起点ラベル: UTF-8 の `破断点_変位(ひずみ)`（[1バイト長 0x1B][UTF-8値]）を検索
+ *    2. 結果領域に限定: [最初の日時オフセット, 「試験条件」オフセット)
+ *       ← テンプレート側に同名ラベル（値 "0"）があるので、これを外すのが誤検出防止の要
+ *    3. 値アンカー走査: ラベルの後 200 バイト以内で最初に現れる値アンカー
+ *    4. 除外: 値 "0"（テンプレートの初期値）。パラメータの `70`（MAXの%レベル）は
+ *       アンカー末尾形ではないので自然に外れる
+ *
+ *  xtux … UTF-16LE・順序構造方式
+ *    バイトアンカー走査は使えない。ヘッダの後ろに「ラベル列 → 数値列」が同順に並ぶので、
+ *    parseResultsXtux が組み立てた結果サマリー（i 番目のラベル ← i 番目の数値）から拾う。
+ * ==========================================================================*/
+const ELONG_LABELS = ["破断点_変位(ひずみ)", "破断点_At"];
+const ELONG_WINDOW = 200;                 // vtav: ラベル位置から値アンカーを探す窓（バイト）
+/* 破断点のひずみは % で記録される。ただし vtav の文字列ウォーカーは英数字も漢字も含まない
+   単独記号を落とすので、"%" はトークンに出てこない（＝近傍から拾うと隣の "mm" などを
+   拾ってしまう）。この項目の単位はラベルから確定するので、ここで補う。 */
+const ELONG_UNIT = "%";
+
+/** vtav: 結果領域の中で起点ラベルを探し、その後ろの最初の値アンカーを読む。 */
+function findElongVtav(data) {
+  const enc = new TextEncoder();
+  let auditStart = findBytes(data, BYTES_試験条件);
+  if (auditStart < 0) auditStart = data.length;
+  const dt = findDateTimeOffset(data);
+  const resultsStart = dt >= 0 ? dt : 0;
+
+  for (const label of ELONG_LABELS) {
+    const body = enc.encode(label);
+    const tlv = new Uint8Array(body.length + 1);
+    tlv[0] = body.length;                                    // [1バイト長][UTF-8値]
+    tlv.set(body, 1);
+    /* TLV ごとの一致を先に見て、外れたときだけ生の文字列一致で拾う */
+    for (const needle of [tlv, body]) {
+      let from = 0;
+      for (;;) {
+        const j = findBytes(data, needle, from);
+        if (j < 0) break;
+        from = j + 1;
+        /* 結果領域の外（テンプレート側の同名ラベル）は見ない */
+        if (!(resultsStart <= j && j < auditStart)) continue;
+        const limit = Math.min(data.length, j + ELONG_WINDOW);
+        for (let i = j + needle.length; i < limit; i++) {
+          const a = valueAnchorAt(data, i);
+          if (!a) continue;
+          if (a.na) return { label, value: "", unit: ELONG_UNIT, at: i, na: true };
+          if (a.val === "0") continue;                       // テンプレートの初期値は値ではない
+          return { label, value: a.val, unit: ELONG_UNIT, at: i, na: false };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** 結果サマリーから「伸び」の記録値を拾う（xtux の本筋・vtav の控え）。 */
+function elongFromResults(results) {
+  for (const label of ELONG_LABELS) {
+    const r = (results || []).find((x) => x.label === label && NUM_RE.test(String(x.value)));
+    if (r) return { label, value: String(r.value), unit: r.unit || ELONG_UNIT, param: r.param || "", at: null, na: false };
+  }
+  return null;
+}
+
+/** ファイルが記録している「伸び」を、フォーマットごとの方式で取り出す。 */
+function extractElongation(fmt, data, results) {
+  if (fmt === "vtav") {
+    const hit = findElongVtav(data);
+    if (hit && !hit.na) return { ...hit, src: "anchor" };
+    const fb = elongFromResults(results);
+    if (fb) return { ...fb, src: "results" };
+    return hit ? { ...hit, src: "anchor" } : null;           // 未算出（-.-）はそのまま返す
+  }
+  const r = elongFromResults(results);
+  return r ? { ...r, src: "results" } : null;
+}
+
+/**
+ * 抜き出した「伸び」を結果サマリーに反映する。
+ * レポートの表・グラフの ×・解析カードはすべて results 経由で同じ値を読むので、
+ * ここで 1 か所に集めておけば、表とカードが食い違わない。
+ */
+function mergeElongation(results, rec) {
+  if (!results || !rec || rec.na || !NUM_RE.test(String(rec.value))) return;
+  const cur = results.find((x) => x.label === rec.label);
+  if (!cur) {
+    results.push({ label: rec.label, unit: rec.unit, value: rec.value, param: rec.param || "" });
+    return;
+  }
+  /* バイトアンカーで取り直した値が正（順序構造から来た値はそのまま）。
+     単位も、近傍から拾った "mm" などではなくラベルから確定する % に直す。 */
+  if (rec.src === "anchor") {
+    cur.value = rec.value;
+    cur.unit = rec.unit;
+  }
 }
 
 /* ============================================================================

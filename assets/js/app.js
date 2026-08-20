@@ -91,6 +91,7 @@ async function processEntry(entry) {
       entry.fmt = "csv";
       entry.fmtBasis = `CSV 入力（文字コード: ${enc}）`;
       entry.results = []; entry.report = []; entry.cond = {}; entry.audit = [];
+      entry.elongFile = null;             // CSV 入力にはファイル記録の破断点が無い
       entry.wave = null; entry.tokenCount = 0;
       entry.passRanges = {};              // CSV 入力には合格範囲が入っていない
     } else {
@@ -108,6 +109,10 @@ async function processEntry(entry) {
         entry.results = parseResultsXtux(tokens);
         entry.conf = "high(order)";
       }
+      /* 「伸び」の真値はファイル記録値。表・解析カード・グラフの × が同じ値を指すよう、
+         結果サマリーへ反映してからレポート項目を組む。 */
+      entry.elongFile = extractElongation(det.fmt, data, entry.results);
+      mergeElongation(entry.results, entry.elongFile);
       entry.report = buildReport(entry.results);
 
       const cond = extractConditions(tokens);
@@ -199,6 +204,17 @@ function resolveArea(entry) {
 }
 
 /* ───────────────── 解析の実行 ───────────────── */
+/**
+ * 変換元ファイルが記録している「伸び」[%]（＝ 破断点_変位(ひずみ)）。
+ * これが解析の A.elongation の初期値になる（無いときだけ波形からの計算値へ落ちる）。
+ */
+function fileElongation(entry) {
+  const rec = (entry && entry.elongFile) || elongFromResults(entry ? entry.results : null);
+  if (!rec || rec.na) return null;
+  const v = parseFloat(String(rec.value).replace(/,/g, ""));
+  return fin(v) ? { value: v, label: rec.label, unit: rec.unit || "%" } : null;
+}
+
 function runAnalysis(entry) {
   entry.analysis = null;
   entry.analysisBlock = null;
@@ -217,6 +233,7 @@ function runAnalysis(entry) {
       area: area.area, areaBasis: area.basis,
       stressSource: cols.stress ? "CSV の応力列をそのまま使用（換算なし・§11.2 A）" : null,
       ranges: entry.passRanges || null,
+      fileElong: fileElongation(entry),
     }, P);
     return;
   }
@@ -237,6 +254,7 @@ function runAnalysis(entry) {
     area: area.area, areaBasis: area.basis,
     stressSource: null,                       // DAT は全点 SS 応力を force ÷ A で復元（§11.2 B）
     ranges: entry.passRanges || null,
+    fileElong: fileElongation(entry),
   }, P);
 }
 function reanalyzeAll() {
@@ -915,8 +933,11 @@ function fracturePanel(e, A) {
   const lastIdx = A.n - 1;
   let maxStrain = NaN;
   if (st) { let m = -Infinity; for (const v of st) if (fin(v) && v > m) m = v; maxStrain = m; }
-  const fileElong = (e.results || []).find((r) => r.label === "破断点_変位(ひずみ)" || r.label === "破断点_At");
-  const adopted = A.fractureA ? "式①→②法" : (A.fractureB ? "島津法" : null);
+  const fileElong = fileElongation(e);
+  /* 伸びに採ったのはどれか。ファイル記録値があればそれ、無ければ検出した破断点。 */
+  const adopted = A.elongation
+    ? (A.elongation.src === "file" ? "元ファイルの値" : A.elongation.method)
+    : null;
 
   const row = (name, fr, why) => `<tr>
     <td class="k">${esc(name)}</td>
@@ -937,11 +958,14 @@ function fracturePanel(e, A) {
           <td class="n">${at(lastIdx)}</td>
           <td class="src">記録の最後。ひずみの最大は ${fin(maxStrain) ? `${fmtNum(maxStrain, 2)} %` : "—"}</td></tr>
         <tr><td class="k">元ファイルの値</td><td class="n">—</td>
-          <td class="n">${fileElong ? esc(fileElong.value) + " %" : "—"}</td>
-          <td class="src">${fileElong ? `変換元ファイルの「${esc(fileElong.label)}」（装置が出した答え）` : "変換元ファイルに破断点の値がありません"}</td></tr>
+          <td class="n">${fileElong ? `${fmtNum(fileElong.value, 2)} %` : "—"}</td>
+          <td class="src">${fileElong
+            ? `変換元ファイルの「${esc(fileElong.label)}」（装置が出した答え）。伸びはこの値を使います`
+            : "変換元ファイルに破断点の値がありません"}</td></tr>
       </tbody></table></div></div>
-    <p class="card__note"><b>この決め方はまだ試験段階です。</b>レポートには使わず、レポートの伸びは
-      変換元ファイルの「破断点_変位(ひずみ)」をそのまま出します。ここは元ファイルの値と見比べるための表です。
+    <p class="card__note"><b>この決め方はまだ試験段階です。</b>レポートも上の「伸び」も、
+      変換元ファイルの「破断点_変位(ひずみ)」をそのまま出します（ファイルに値が無いときだけ、
+      ここで検出した破断点のひずみへ落とします）。この表は元ファイルの値と見比べるためのものです。
       式②のしきい値（Fmax に対する割合）と島津法の低下率は、設定 › 破断・伸び で変えられます。</p>
   </div>`;
 }
