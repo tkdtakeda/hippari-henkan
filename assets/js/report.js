@@ -284,14 +284,25 @@ function reportMeta(e) {
   const dim = (k) => (pick(k) ? `${pick(k)} mm` : null);
   const A = e.analysis;
 
-  /* 耐力点も変換元ファイルの値。無いときは（なし）とし、参考としてこのツールの解析値を title に添える */
+  /* 耐力点は変換元ファイルの記録値が正式値（別紙 §8.2）。グラフ交点で上書きしない。
+     再現交点と差、計算区間はツールチップに添えて、差の理由を追えるようにする。 */
   const yf = fileValue(e, { srcLabels: ["耐力点1_応力", "耐力点1Rp"] });
-  const y = A && A.yieldV && fin(A.yieldV.stress) ? A.yieldV : null;
-  const yieldText = yf ? `${fmtNum(yf.value, 1)} N/mm²` : null;
-  const yieldWhy = yf
-    ? `変換元ファイルの「${yf.label}」の値` + (y ? `／このツールの解析値（速度法）は ${fmtNum(y.stress, 1)} N/mm²` : "")
-    : `変換元ファイルに耐力点の値がありません` +
-      (y ? `／このツールの解析値（速度法・試験段階）は ${fmtNum(y.stress, 1)} N/mm²` : "");
+  const L = A && A.elasticLineFile && A.elasticLineFile.available ? A.elasticLineFile : null;
+  const cross = L && L.proofPoint ? L.proofPoint : null;
+  const span = L ? `計算区間 ${fmtNum(L.p20.stress, 1)}〜${fmtNum(L.p60.stress, 1)} N/mm²（耐力の 20〜60%）` : "";
+  const repro = cross
+    ? `再現交点 ${fmtNum(cross.stress, 1)} N/mm²`
+      + (yf ? `（正式値との差 ${fmtNum(cross.stress - yf.value, 1)} N/mm²）` : "")
+    : (L ? "再現交点は未検出（0.2% オフセット線が曲線と交わりません）" : "");
+  const yieldText = yf
+    ? `${fmtNum(yf.value, 1)} N/mm²`
+    : (cross ? `${fmtNum(cross.stress, 1)} N/mm²（参考）` : null);
+  const yieldWhy = [
+    yf ? `変換元ファイルの「${yf.label}」の値（正式値）` : "変換元ファイルに正式な耐力値がありません",
+    !yf && cross ? "表示しているのは装置方式の再現交点です（参考値）" : "",
+    L ? "算出根拠: 耐力 20〜60% の 2 点直線を 0.2% オフセット" : "",
+    span, repro,
+  ].filter(Boolean).join("／");
 
   const t = parseFileTitle(e);
   const fromName = "ファイル名（年月日_連番_ロットNo._[採取位置]試験方向）から読み取り";
@@ -306,7 +317,7 @@ function reportMeta(e) {
     ["試験片形状", pick("試験片形状")],
     ["厚さ × 幅", dim("厚さ") && dim("幅") ? `${dim("厚さ")} × ${dim("幅")}` : dim("直径") ? `φ ${dim("直径")}` : null],
     ["ゲージ長", `${fmtNum(state.params.gaugeLength, 1)} mm`],
-    ["耐力点", yieldText, `速度法で求めた耐力点。${yieldWhy}`],
+    ["耐力点 Rp0.2", yieldText, yieldWhy],
     ["入力ファイル", e.name],
   ];
 }
@@ -523,6 +534,31 @@ function watchReportSheet() {
   reportRO.observe(wrap);
 }
 
+/**
+ * 用紙のグラフに、装置方式の弾性直線・0.2% オフセット線・20%/60% 点・耐力点を置く。
+ * 単票と違って切り替えは無い。復元できないファイルでは何も足さない（正式線として
+ * 解析方式を出さない ＝ 耐力線なし。別紙 §9）。
+ */
+function addReportElastic(spec, A) {
+  const L = A && A.elasticLineFile;
+  if (!L || !L.available) return;
+  const { p20, p60 } = L;
+  const seg = (x0, x1, f, color, width, dash) => spec.series.push({
+    xs: Float64Array.from([x0, x1]), ys: Float64Array.from([f(x0), f(x1)]),
+    color: cssVar(color), width, dash, scale: false,
+  });
+  const xEnd = L.proofPoint ? L.proofPoint.strain * 1.1 : p60.strain + 0.3;
+  seg(p20.strain, p60.strain, L.line, "--chart-elastic", 2);              // 計算区間は実線
+  seg(p60.strain, xEnd, L.line, "--chart-elastic", 1.4, [5, 4]);          // その先は外挿
+  seg(0.2, Math.max(0.25, xEnd), L.offsetLine, "--chart-offset", 1.6, [5, 4]);
+  spec.markers.push({ x: p20.strain, y: p20.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "20%" });
+  spec.markers.push({ x: p60.strain, y: p60.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "60%" });
+  if (L.proofPoint) {
+    spec.markers.push({ x: L.proofPoint.strain, y: L.proofPoint.stress, shape: "triangle-up",
+      color: cssVar("--chart-offset"), label: "Rp0.2" });
+  }
+}
+
 /* ───────────────── 用紙のグラフ（応力 － 伸びの全体像） ─────────────────
  * 横軸は元 Trapezium と同じ「変位計1(ひずみ)(%)」＝伸び計基準のひずみに合わせる。 */
 function mountReportChart(e) {
@@ -539,6 +575,9 @@ function mountReportChart(e) {
     series: [{ ...base, color: cssVar("--chart-line"), width: 1.6, primary: true }],
     markers: [], bands: [],
   };
+  /* 装置方式（耐力 20〜60%）の弾性直線・0.2% オフセット線・耐力点を固定で重ねる（別紙 §8.1）。
+     ここは操作できない。印刷・PDF でも同じ構成になる。 */
+  addReportElastic(spec, A);
   /* 注釈は 最大点 Rm と、変換元ファイルの破断点だけ。
      破断点はこのツールの検出（試験段階）ではなく、ファイルの 破断点_変位(ひずみ) を使う。
      ファイルの値はひずみ [%] なので、X 軸（ひずみ %）へはそのまま置く。 */

@@ -30,6 +30,13 @@ const state = {
     fractureFile: true,
     fractureA: false,
     fractureB: false,
+    /* 耐力線の方式と表示要素（別紙 §7.1）。既定は装置方式（耐力 20〜60%）。 */
+    elasticMethod: "file",   // 'file' = 装置方式 / 'calc' = 解析方式（複数点回帰）
+    showElastic: true,       // 弾性直線
+    showOffset: true,        // 0.2% オフセット線
+    showEnds: true,          // 20% 点・60% 点（装置方式のみ）
+    showProof: true,         // 耐力点（選択方式の交点）
+    compareCalc: false,      // 装置方式のときに解析回帰線を参考色で重ねる
     side: false,           // 時間-応力線図を並べて表示するか
     ovCollapsed: false,    // 全体図（ミニマップ）をたたむか
     view: null,            // 主図の表示範囲（null = 全体表示）
@@ -178,6 +185,7 @@ async function processEntry(entry) {
       entry.fmtBasis = `CSV 入力（文字コード: ${enc}）`;
       entry.results = []; entry.report = []; entry.cond = {}; entry.audit = [];
       entry.elongFile = null;             // CSV 入力にはファイル記録の破断点が無い
+      entry.elasticSrc = null;            // 同じく、装置方式の元情報も無い（解析方式のみ）
       entry.wave = null; entry.tokenCount = 0;
       entry.passRanges = {};              // CSV 入力には合格範囲が入っていない
     } else {
@@ -199,6 +207,8 @@ async function processEntry(entry) {
          結果サマリーへ反映してからレポート項目を組む。 */
       entry.elongFile = extractElongation(det.fmt, data, entry.results);
       mergeElongation(entry.results, entry.elongFile);
+      /* 装置方式の弾性直線の材料（耐力×0.2/0.6・中間点・計算区間） */
+      entry.elasticSrc = extractElasticSource(det.fmt, entry.results);
       entry.report = buildReport(entry.results);
 
       const cond = extractConditions(tokens);
@@ -343,6 +353,7 @@ function runAnalysis(entry) {
     fileElong: fileElongation(entry),
     /* 合否判定はファイルの記録値で行う（レポートの表と同じ値。無い項目は判定しない） */
     judgeValues: fileJudgeValues(entry),
+    elastic: entry.elasticSrc || null,      // 装置方式（耐力 20〜60%）の元情報
   }, P);
 }
 function reanalyzeAll() {
@@ -1283,7 +1294,7 @@ function chartbarHtml(A, K) {
         <label class="check-line"><input type="checkbox" data-act="cfracture" data-k="fractureA" ${C.fractureA ? "checked" : ""} ${C.markers && A.fractureA ? "" : "disabled"}>式①→②</label>
         <label class="check-line"><input type="checkbox" data-act="cfracture" data-k="fractureB" ${C.fractureB ? "checked" : ""} ${C.markers && A.fractureB ? "" : "disabled"}>島津法</label>
       </span>
-      <label class="check-line"><input type="checkbox" data-act="cfit"${annOff} ${C.fit ? "checked" : ""}>回帰直線・0.2% 線</label>
+      ${elasticBarHtml(A, isSS)}
       ${K.max ? "" : `<label class="check-line"><input type="checkbox" data-act="cside" ${C.side ? "checked" : ""}>時間-応力を並べる</label>`}
       <span class="rangebar__hint">
         <span><kbd>ホイール</kbd> 拡大縮小（<kbd>Shift</kbd> X のみ / <kbd>Alt</kbd> Y のみ）</span>
@@ -1316,8 +1327,9 @@ function chartbarHtml(A, K) {
         ${jumps.map((j) => `<button class="chip btn--sm" data-act="jump" data-j="${j.k}" ${j.ok ? "" : `disabled title="${esc(j.why)}"`}>${esc(j.label)}</button>`).join("")}
       </span>
     </div>
+    ${isSS ? elasticNoteHtml(A) : ""}
     ${jumpWhy ? `<p class="chartbar__note">押せない拡大ボタンの理由: ${esc(jumpWhy)}</p>` : ""}
-    ${!isSS ? `<p class="chartbar__note">注釈（耐力点▽・破断点×・0.2%耐力★・回帰直線）は ひずみ-応力線図のときに重ねます。</p>` : ""}
+    ${!isSS ? `<p class="chartbar__note">注釈（耐力線・20%点/60%点・耐力点・破断点×）は ひずみ-応力線図のときに重ねます。</p>` : ""}
   </div>`;
 }
 
@@ -1437,6 +1449,13 @@ function seriesFor(A, xKey, yKey) {
   }
   return { xs: xs.subarray(0, m), ys: ys.subarray(0, m) };
 }
+/** 式の末尾に足す項。0 に丸まるなら書かない（「+ -0.0」を出さない） */
+function signedTerm(v, d = 1) {
+  if (!fin(v)) return "";
+  const t = fmtNum(Math.abs(v), d);
+  if (parseFloat(t.replace(/,/g, "")) === 0) return "";
+  return `${v < 0 ? " − " : " + "}${t}`;
+}
 const legendItem = (glyph, varName, label, detail) => `<span class="legend-item">
   <svg viewBox="0 0 22 12" style="color:var(${varName})" aria-hidden="true">${glyph}</svg>
   <span><b>${esc(label)}</b>${detail ? ` ${esc(detail)}` : ""}</span></span>`;
@@ -1444,6 +1463,7 @@ const GLYPH = {
   line: '<path d="M1 6h20" stroke="currentColor" stroke-width="2.2" fill="none"/>',
   dash: '<path d="M1 6h20" stroke="currentColor" stroke-width="2.2" stroke-dasharray="4 3" fill="none"/>',
   tri:  '<path d="M5 3h12l-6 7z" fill="none" stroke="currentColor" stroke-width="2"/>',
+  triUp:'<path d="M5 10h12l-6-7z" fill="currentColor"/>',
   x:    '<path d="M6 2l10 8M16 2 6 10" stroke="currentColor" stroke-width="2"/>',
   star: '<path d="m11 1 2.2 4.5 4.8.7-3.5 3.4.8 4.8L11 12l-4.3 2.4.8-4.8L4 6.2l4.8-.7z" fill="currentColor" transform="scale(.8) translate(2.5,0)"/>',
   band: '<rect x="1" y="1" width="20" height="10" fill="currentColor" opacity=".35"/>',
@@ -1461,6 +1481,158 @@ function selectedFracturePoint(e, A) {
   return null;
 }
 
+/* ============================================================================
+ * 耐力線の方式選択（別紙: 耐力線・弾性率計算区間表示 §7.1）
+ *
+ * 「回帰直線・0.2% 線」の単一チェックを、方式（どの直線を正とするか）と
+ * 表示要素（何を重ねるか）に分ける。既定は装置方式（耐力 20〜60% の 2 点直線）。
+ * 装置方式を復元できないファイルでは選べないので、無効にしたうえで理由を出す（§4）。
+ * ==========================================================================*/
+/** いま実際に使う方式。装置方式が使えないときは解析方式へ落とす（§2.1 フォールバック）。 */
+function elasticMethodOf(A) {
+  const want = state.chart.elasticMethod;
+  const canFile = !!(A && A.elasticLineFile && A.elasticLineFile.available);
+  return want === "file" && !canFile ? "calc" : want;
+}
+/** フォールバックしているか（画面に明示する） */
+function elasticFellBack(A) {
+  return state.chart.elasticMethod === "file" && elasticMethodOf(A) === "calc";
+}
+
+function elasticBarHtml(A, isSS) {
+  const C = state.chart;
+  const L = A && A.elasticLineFile;
+  const canFile = !!(L && L.available);
+  const off = isSS ? "" : ' disabled title="耐力線は ひずみ-応力線図のときだけ重ねます"';
+  const fileWhy = canFile
+    ? `20% 点 ${fmtNum(L.p20.stress, 1)} ／ 60% 点 ${fmtNum(L.p60.stress, 1)} N/mm² の 2 点直線`
+    : (L && L.reasons[0]) || "変換元ファイルから 20% 点・60% 点を復元できません";
+  const method = elasticMethodOf(A);
+  const chk = (act, on, label, extra = "") =>
+    `<label class="check-line"><input type="checkbox" data-act="${act}"${off}${extra} ${on ? "checked" : ""}>${label}</label>`;
+  return `<span class="elastic-bar"${isSS ? "" : " hidden"}>
+    <span class="rangebar__label">耐力線:</span>
+    <label class="check-line" title="${esc(fileWhy)}">
+      <input type="radio" name="elasticMethod" data-act="emethod" data-m="file"${off}
+        ${canFile ? "" : "disabled"} ${method === "file" ? "checked" : ""}>装置方式（耐力20〜60%）</label>
+    <label class="check-line" title="現行の複数点回帰。解析・比較用">
+      <input type="radio" name="elasticMethod" data-act="emethod" data-m="calc"${off}
+        ${A && A.linear ? "" : "disabled"} ${method === "calc" ? "checked" : ""}>解析方式（複数点回帰）</label>
+    ${chk("eshow", C.showElastic, "弾性直線", ' data-k="showElastic"')}
+    ${chk("eshow", C.showOffset, "0.2% オフセット線", ' data-k="showOffset"')}
+    ${chk("eshow", C.showEnds, "20%点・60%点", ` data-k="showEnds"${method === "file" ? "" : " disabled"}`)}
+    ${chk("eshow", C.showProof, "耐力点", ' data-k="showProof"')}
+    ${chk("eshow", C.compareCalc, "解析線を比較表示", ` data-k="compareCalc"${method === "file" && A && A.linear ? "" : " disabled"}`)}
+  </span>`;
+}
+
+/** ツールバーの下に出す、方式の根拠とフォールバックの説明（§2.1・§6） */
+function elasticNoteHtml(A) {
+  const L = A && A.elasticLineFile;
+  const method = elasticMethodOf(A);
+  const bits = [];
+  if (elasticFellBack(A)) {
+    bits.push(`<b>装置方式を復元できないため解析方式を表示しています。</b>${esc((L && L.reasons[0]) || "")}`);
+  } else if (method === "file" && L && L.available) {
+    bits.push(`装置方式: 計算区間 ${esc(fmtNum(L.p20.stress, 1))}〜${esc(fmtNum(L.p60.stress, 1))} N/mm²`
+      + `／弾性率 ${esc(fmtNum(L.youngNmm2, 0))} N/mm²`
+      + (fin(L.deltaYoungPct) ? `（ファイル値との差 ${esc(fmtNum(L.deltaYoungPct, 2))} %）` : "")
+      + `／標点距離 ${esc(L.gaugeFrom)}`);
+    if (L.quality === "wave-nearest") bits.push("端点のひずみは波形の最寄り点で補っています");
+    if (!L.proofPoint) bits.push("<b>交点未検出</b>（0.2% オフセット線が曲線と交わりません。近似では代用しません）");
+    for (const r of L.reasons) bits.push(esc(r));
+  } else if (method === "calc" && A && A.linear) {
+    bits.push(`解析方式: 直線域 ${esc(fmtNum(A.linear.strainFrom, 3))}〜${esc(fmtNum(A.linear.strainTo, 3))} %・R² ${A.linear.r2.toFixed(4)}（参考値）`);
+  }
+  return bits.length ? `<p class="chartbar__note">${bits.join("　／　")}</p>` : "";
+}
+
+/**
+ * 耐力線まわりの系列・マーカー・凡例（別紙 §7.2）。
+ *   装置方式 … 20%/60% 点（青の円）・弾性直線（青実線）・0.2% オフセット線（橙破線）・耐力点（三角）
+ *   解析方式 … 現行の回帰直線（緑）と、その 0.2% オフセット交点
+ * 「比較表示」を入れると、装置方式のときに現行回帰線を灰色細線で重ねる。
+ * 正式値と参考値が混ざらないよう、凡例の文言で必ず区別する。
+ */
+function addElasticSeries(spec, legend, A) {
+  const C = state.chart;
+  const method = elasticMethodOf(A);
+  const L = A.elasticLineFile;
+  const seg = (x0, x1, f, color, width, dash) => spec.series.push({
+    xs: Float64Array.from([x0, x1]), ys: Float64Array.from([f(x0), f(x1)]),
+    color: cssVar(color), width, dash, scale: false,
+  });
+
+  if (method === "file" && L && L.available) {
+    const { p20, p60 } = L;
+    let xEnd = p60.strain;
+    if (L.proofPoint) xEnd = Math.max(xEnd, L.proofPoint.strain * 1.1);
+    xEnd = Math.max(xEnd, p60.strain + 0.3);
+    if (C.showElastic) {
+      seg(p20.strain, p60.strain, L.line, "--chart-elastic", 2.2);                 // 計算区間は実線
+      seg(p60.strain, xEnd, L.line, "--chart-elastic", 1.6, [5, 4]);               // その先は外挿
+      spec.bands.push({ from: p20.strain, to: p60.strain });
+      legend.push(legendItem(GLYPH.band, "--chart-elastic", "計算区間（耐力20〜60%）",
+        `ε ${fmtNum(p20.strain, 3)}〜${fmtNum(p60.strain, 3)} %`));
+      legend.push(legendItem(GLYPH.line, "--chart-elastic", "弾性直線（耐力20〜60%）",
+        `E ${fmtNum(L.youngNmm2, 0)} N/mm²（${fmtNum(L.youngGpa, 2)} GPa）／破線は外挿`));
+    }
+    if (C.showOffset) {
+      const ox1 = Math.max(0.2 + 0.05, L.proofPoint ? L.proofPoint.strain * 1.08 : xEnd + 0.2);
+      seg(0.2, ox1, L.offsetLine, "--chart-offset", 1.8, [5, 4]);
+      legend.push(legendItem(GLYPH.dash, "--chart-offset", "0.2% オフセット線",
+        `σ = ${fmtNum(L.slopePerPct, 1)} × (ε − 0.2)${signedTerm(L.intercept, 1)}`));
+    }
+    if (C.showEnds && C.markers) {
+      spec.markers.push({ x: p20.strain, y: p20.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "20%" });
+      spec.markers.push({ x: p60.strain, y: p60.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "60%" });
+      legend.push(legendItem(GLYPH.line, "--chart-elastic", "20% 点・60% 点",
+        `${fmtNum(p20.stress, 1)} ／ ${fmtNum(p60.stress, 1)} N/mm²`
+        + (L.quality === "wave-nearest" ? "（ひずみは波形の最寄り点）" : "")));
+    }
+    if (C.showProof && C.markers && L.proofPoint) {
+      spec.markers.push({ x: L.proofPoint.strain, y: L.proofPoint.stress, shape: "triangle-up",
+        color: cssVar("--chart-offset"), label: "Rp0.2" });
+      legend.push(legendItem(GLYPH.triUp, "--chart-offset", "耐力点 Rp0.2（再現交点）",
+        `${fmtNum(L.proofPoint.stress, 1)} N/mm²`
+        + (fin(L.fileProofStress) ? `／正式値 ${fmtNum(L.fileProofStress, 1)}（差 ${fmtNum(L.deltaProofStress, 1)}）` : "")));
+    }
+    /* 参考として現行の回帰線を重ねる（正式線ではないことを凡例で明示する） */
+    if (C.compareCalc && A.linear) {
+      const { slope, intercept, strainFrom, strainTo } = A.linear;
+      seg(strainFrom, Math.max(strainTo, xEnd), (e) => slope * e + intercept, "--chart-calc", 1.2);
+      legend.push(legendItem(GLYPH.line, "--chart-calc", "解析回帰線（参考）",
+        `R² ${A.linear.r2.toFixed(4)}・${A.linear.nPoints} 点`));
+    }
+    return;
+  }
+
+  /* 解析方式（現行の複数点回帰）。装置方式を復元できないときもここへ落ちる。 */
+  if (A.linear) {
+    const { slope, intercept, strainFrom, strainTo } = A.linear;
+    let xEnd = strainTo;
+    if (A.offset02) xEnd = Math.max(xEnd, A.offset02.strain * 1.08);
+    if (A.yieldV && fin(A.yieldV.strain)) xEnd = Math.max(xEnd, A.yieldV.strain * 1.05);
+    if (C.showElastic) {
+      seg(strainFrom, strainTo, (e) => slope * e + intercept, "--chart-fit", 2);
+      seg(strainTo, xEnd, (e) => slope * e + intercept, "--chart-fit", 1.6, [5, 4]);
+      spec.bands.push({ from: strainFrom, to: strainTo });
+      legend.push(legendItem(GLYPH.band, "--chart-line", "直線域", `ε ${fmtNum(strainFrom, 3)}〜${fmtNum(strainTo, 3)} %`));
+      legend.push(legendItem(GLYPH.line, "--chart-fit", "回帰直線（解析方式・参考）", `R² ${A.linear.r2.toFixed(4)}／破線は外挿`));
+    }
+    if (C.showOffset) {
+      const ox1 = Math.max(0.2, xEnd + 0.2);
+      seg(0.2, ox1, (e) => slope * (e - 0.2), "--chart-offset", 1.6, [5, 4]);
+      legend.push(legendItem(GLYPH.dash, "--chart-offset", "0.2% オフセット線（解析方式）", `σ = ${fmtNum(slope, 1)} × (ε − 0.2)`));
+    }
+    if (C.showProof && C.markers && A.offset02) {
+      spec.markers.push({ x: A.offset02.strain, y: A.offset02.stress, shape: "star", color: cssVar("--chart-offset"), label: "0.2%" });
+      legend.push(legendItem(GLYPH.star, "--chart-offset", "0.2% 耐力（解析方式・参考）",
+        `${fmtNum(A.offset02.stress, 1)} N/mm²${A.offset02.approx ? "・近似採用" : ""}`));
+    }
+  }
+}
+
 /** 主図の系列（注釈込み）を組み立てる */
 function buildMainSpec(e, A, xk, yk) {
   const spec = {
@@ -1476,31 +1648,11 @@ function buildMainSpec(e, A, xk, yk) {
     legend.push(legendItem(GLYPH.line, "--chart-line", "測定データ", `${base.xs.length.toLocaleString("ja-JP")} 点`));
   }
   const isSS = xk === "strain" && yk === "stress";
-  if (isSS && A.linear && state.chart.fit) {
-    const { slope, intercept, strainFrom, strainTo } = A.linear;
-    let xEnd = strainTo;
-    if (A.offset02) xEnd = Math.max(xEnd, A.offset02.strain * 1.08);
-    if (A.yieldV && fin(A.yieldV.strain)) xEnd = Math.max(xEnd, A.yieldV.strain * 1.05);
-    spec.series.push({ xs: Float64Array.from([strainFrom, strainTo]), ys: Float64Array.from([slope * strainFrom + intercept, slope * strainTo + intercept]),
-      color: cssVar("--chart-fit"), width: 2, scale: false });
-    spec.series.push({ xs: Float64Array.from([strainTo, xEnd]), ys: Float64Array.from([slope * strainTo + intercept, slope * xEnd + intercept]),
-      color: cssVar("--chart-fit"), width: 1.6, dash: [5, 4], scale: false });
-    const ox1 = Math.max(0.2, xEnd + 0.2);
-    spec.series.push({ xs: Float64Array.from([0.2, ox1]), ys: Float64Array.from([0, slope * (ox1 - 0.2)]),
-      color: cssVar("--chart-offset"), width: 1.6, dash: [5, 4], scale: false });
-    spec.bands.push({ from: strainFrom, to: strainTo });
-    legend.push(legendItem(GLYPH.band, "--chart-line", "直線域", `ε ${fmtNum(strainFrom, 3)}〜${fmtNum(strainTo, 3)} %`));
-    legend.push(legendItem(GLYPH.line, "--chart-fit", "回帰直線（弾性勾配）", `R² ${A.linear.r2.toFixed(4)}／破線は外挿`));
-    legend.push(legendItem(GLYPH.dash, "--chart-offset", "0.2% オフセット線", `σ = ${fmtNum(slope, 1)} × (ε − 0.2)`));
-  }
+  if (isSS) addElasticSeries(spec, legend, A);
   if (isSS && state.chart.markers) {
     if (A.yieldV && fin(A.yieldV.strain) && fin(A.yieldV.stress)) {
       spec.markers.push({ x: A.yieldV.strain, y: A.yieldV.stress, shape: "triangle-down", color: cssVar("--chart-yield"), label: "耐力", below: true });
       legend.push(legendItem(GLYPH.tri, "--chart-yield", "耐力点（速度法）", `${fmtNum(A.yieldV.stress, 1)} N/mm²`));
-    }
-    if (A.offset02) {
-      spec.markers.push({ x: A.offset02.strain, y: A.offset02.stress, shape: "star", color: cssVar("--chart-offset"), label: "0.2%" });
-      legend.push(legendItem(GLYPH.star, "--chart-offset", "0.2% 耐力", `${fmtNum(A.offset02.stress, 1)} N/mm²`));
     }
     if (state.chart.fractureFile) {
       const fr = fileBreakPoint(e, A);
@@ -2067,7 +2219,8 @@ function onWorkspaceChange(ev) {
       break;
     case "cmark": state.chart.markers = t.checked; scheduleRender(false); break;
     case "cfracture": state.chart[t.dataset.k] = t.checked; scheduleRender(false); break;
-    case "cfit": state.chart.fit = t.checked; scheduleRender(false); break;
+    case "emethod": state.chart.elasticMethod = t.dataset.m === "calc" ? "calc" : "file"; scheduleRender(false); break;
+    case "eshow": state.chart[t.dataset.k] = t.checked; scheduleRender(false); break;
     case "cside": state.chart.side = t.checked; scheduleRender(false); break;
     case "range": {
       const c = chartRefs.main;

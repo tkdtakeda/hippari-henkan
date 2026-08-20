@@ -144,6 +144,8 @@
   --chart-line-2: var(--blue-400);
   --chart-fit: var(--teal-600);
   --chart-offset: var(--amber-600);
+  --chart-elastic: var(--blue-600);      /* 装置方式の弾性直線・20%/60% 点 */
+  --chart-calc: var(--n-400);            /* 解析回帰線（参考） */
   --chart-yield: var(--teal-700);
   --chart-fracture: var(--red-600);
   --chart-band: rgba(42,109,181,.10);
@@ -195,6 +197,8 @@
     --chart-line-2: var(--blue-500);
     --chart-fit: var(--teal-500);
     --chart-offset:#d9a441;
+    --chart-elastic: var(--blue-400);
+    --chart-calc:#7d8ea6;
     --chart-yield: var(--teal-500);
     --chart-fracture:#e2685f;
     --chart-band: rgba(143,182,222,.12);

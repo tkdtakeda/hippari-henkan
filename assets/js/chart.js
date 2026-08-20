@@ -589,6 +589,9 @@ class LineChart {
     if (shape === "triangle-down") {
       ctx.moveTo(px - r, py - r); ctx.lineTo(px + r, py - r); ctx.lineTo(px, py + r * 0.9); ctx.closePath();
       ctx.fillStyle = cssVar("--chart-halo"); ctx.fill(); ctx.stroke();
+    } else if (shape === "triangle-up") {
+      ctx.moveTo(px - r, py + r); ctx.lineTo(px + r, py + r); ctx.lineTo(px, py - r * 0.9); ctx.closePath();
+      ctx.fill(); ctx.stroke();
     } else if (shape === "x") {
       ctx.moveTo(px - r, py - r); ctx.lineTo(px + r, py + r);
       ctx.moveTo(px + r, py - r); ctx.lineTo(px - r, py + r);

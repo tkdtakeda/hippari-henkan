@@ -501,6 +501,24 @@ tr.rowlink{ cursor:pointer; }
 }
 .chartbar__row{ display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap; min-width:0; }
 .chartbar__note{ font-size:var(--fs-1); color:var(--text-muted); }
+.chartbar__note b{ color:var(--text); }
+/* 耐力線の方式選択。方式（正）と表示要素（重ねるもの）を見た目でも分ける */
+.elastic-bar{
+  display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-1) var(--sp-3);
+  padding:var(--sp-1) var(--sp-2); border:1px solid var(--border); border-radius:var(--r-2);
+  background:var(--surface-2);
+}
+.elastic-bar[hidden]{ display:none; }
+.elastic-bar .check-line{ white-space:nowrap; }
+.elastic-bar input[type="radio"]{ accent-color:var(--primary); }
+/* 破断位置の選択（アップロード分）も同じ見た目に揃える */
+.break-marker-select{
+  display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-1) var(--sp-3);
+  padding:var(--sp-1) var(--sp-2); border:1px solid var(--border); border-radius:var(--r-2);
+  background:var(--surface-2);
+}
+.break-marker-select[hidden]{ display:none; }
+.break-marker-select .check-line{ white-space:nowrap; }
 .chartbar .field__label{ white-space:nowrap; }
 
 /* 表示範囲（数値指定・スクロール） */

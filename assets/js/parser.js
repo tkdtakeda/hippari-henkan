@@ -308,6 +308,90 @@ function mergeElongation(results, rec) {
 }
 
 /* ============================================================================
+ * 装置方式の弾性直線の材料（別紙: 耐力線・弾性率計算区間表示 §3・§6）
+ *
+ * 装置は「耐力の 0.2 倍の点」と「0.6 倍の点」の 2 点を通る直線で弾性率を出している。
+ * その 2 点をファイルから復元できれば、装置と同じ弾性直線・0.2% オフセット線・
+ * 耐力点を描ける。ここでは波形には触らず、ファイルが持っている数値だけを正規化する。
+ *
+ *  vtav … 結果サマリーに「耐力×0.2」「耐力×0.6」と、対応する中間点 1・2 が入る。
+ *         中間点1 が 60% 側、中間点2 が 20% 側。
+ *  xtux … 弾性率_Standard のパラメータに計算区間が入る（例:「試験力 4667 - 14001 N」）。
+ * ==========================================================================*/
+
+/** 結果サマリーから、候補ラベルの順に最初の 1 件を返す */
+function resultOf(results, labels) {
+  for (const lb of labels) {
+    const r = (results || []).find((x) => x.label === lb);
+    if (r) return r;
+  }
+  return null;
+}
+/** 同上。数値だけが欲しいとき（取れなければ NaN） */
+function resultNum(results, labels) {
+  const r = resultOf(results, labels);
+  const v = r ? parseFloat(String(r.value).replace(/,/g, "")) : NaN;
+  return isFinite(v) ? v : NaN;
+}
+
+/**
+ * 弾性率_Standard のパラメータから計算区間を読む。
+ *   「試験力 4667 - 14001 N」 → { kind:"force", lo:4667, hi:14001, unit:"N" }
+ *   「応力 24.2 - 72.6 N/mm2」 → { kind:"stress", ... }
+ * 区切りは -／–／〜／~ のどれでもよい。末尾の単位は落ちていても構わない
+ * （見出し語から決められるため）。
+ */
+const SPAN_RE = /(試験力|応力|荷重)\s*([-+]?[\d.]+)\s*[-–—〜~]\s*([-+]?[\d.]+)/;
+function parseElasticSpan(param) {
+  const text = String(param || "").trim();
+  if (!text) return null;
+  const m = SPAN_RE.exec(text);
+  if (!m) return null;
+  const lo = parseFloat(m[2]), hi = parseFloat(m[3]);
+  if (!isFinite(lo) || !isFinite(hi) || !(hi > lo)) return null;
+  const kind = m[1] === "応力" ? "stress" : "force";
+  return { kind, lo, hi, unit: kind === "stress" ? "N/mm2" : "N", text };
+}
+
+/** 中間点 1 件（試験力・応力・変位計1・時間）。無い項目は NaN のまま。 */
+function midPointOf(results, prefix) {
+  const grab = (words) => {
+    const r = (results || []).find((x) => x.label.startsWith(prefix) && words.some((w) => x.label.includes(w)));
+    const v = r ? parseFloat(String(r.value).replace(/,/g, "")) : NaN;
+    return isFinite(v) ? v : NaN;
+  };
+  const p = {
+    label: prefix,
+    force: grab(["試験力"]),
+    stress: grab(["応力"]),
+    disp: grab(["変位計"]),
+    time: grab(["時間"]),
+  };
+  p.any = fin(p.force) || fin(p.stress) || fin(p.disp);
+  return p;
+}
+
+/**
+ * 装置方式を組み立てるための材料をまとめて取り出す。
+ * 使える／使えないの判断と、実際の直線の算出は解析側（analysis.js）で行う。
+ */
+function extractElasticSource(fmt, results) {
+  const std = resultOf(results, ["弾性率_Standard"]);
+  return {
+    fmt,
+    rp: resultNum(results, ["耐力点1_応力", "耐力点1Rp"]),      // 正式な耐力 [N/mm²]
+    s20: resultNum(results, ["耐力×0.2"]),                      // 20% 点の応力 [N/mm²]
+    s60: resultNum(results, ["耐力×0.6"]),                      // 60% 点の応力 [N/mm²]
+    mid20: midPointOf(results, "中間点2"),                      // 中間点2 = 20% 側
+    mid60: midPointOf(results, "中間点1"),                      // 中間点1 = 60% 側
+    youngNmm2: resultNum(results, ["弾性率_Standard"]),          // 照合用 [N/mm²]
+    youngGpa: resultNum(results, ["ヤング率"]),                  // 照合用 [GPa]
+    gauge: resultNum(results, ["変位計1標点距離"]),              // 標点距離 [mm]
+    span: parseElasticSpan(std ? std.param : ""),               // xtux の計算区間
+  };
+}
+
+/* ============================================================================
  * 合否判定の「合格範囲」抽出（別紙: vtav/xtux 合格範囲抽出ルール仕様）
  *
  * 構造（全ファイル共通・20 バイト）:
