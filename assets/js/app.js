@@ -10,6 +10,7 @@
  * アプリケーション状態
  * ==========================================================================*/
 const LS_KEY = "trapezium-html-tool/params/v1";
+const LS_REPORT_COLS = "trapezium-html-tool/reportCols/v1";
 const state = {
   entries: [],
   selectedId: null,
@@ -21,6 +22,8 @@ const state = {
   params: { ...DEFAULT_PARAMS },
   sort: { key: "name", dir: 1 },
   reportZoom: "fit",           // レポートの用紙: 'fit'（器に合わせる）| 'actual'（原寸）
+  reportCols: defaultReportCols(),  // レポート表に出す列の key（既定は全部）
+  reportColsOpen: false,       // 「表示項目」の一覧を開いているか（再描画をまたいで保つ）
   chart: {
     x: "strain", y: "stress", markers: true, fit: true,
     side: false,           // 時間-応力線図を並べて表示するか
@@ -43,6 +46,25 @@ function loadParams() {
 }
 function saveParams() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(state.params)); } catch (_) {}
+}
+
+/**
+ * レポート表に出す列の選択を読む。
+ * 将来 REPORT_COLS から消えた key は無視し、残りが空なら既定（全表示）に戻す。
+ */
+function loadReportCols() {
+  try {
+    const raw = localStorage.getItem(LS_REPORT_COLS);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!Array.isArray(saved)) return;
+    const known = new Set(defaultReportCols());
+    const keys = saved.filter((k) => known.has(k));
+    state.reportCols = keys.length ? keys : defaultReportCols();
+  } catch (_) { /* file:// で localStorage が使えない環境もある。既定値で続行する。 */ }
+}
+function saveReportCols() {
+  try { localStorage.setItem(LS_REPORT_COLS, JSON.stringify(state.reportCols)); } catch (_) {}
 }
 
 const selected = () => state.entries.find((e) => e.id === state.selectedId) || null;
@@ -1722,6 +1744,15 @@ function onWorkspaceClick(ev) {
       scheduleRender(false);
       break;
     }
+    case "rp-cols":
+      state.reportColsOpen = !state.reportColsOpen;
+      scheduleRender(false);
+      break;
+    case "rp-cols-reset":
+      state.reportCols = defaultReportCols();
+      saveReportCols();
+      scheduleRender(false);
+      break;
     case "rp-print":
       window.print();
       break;
@@ -1812,6 +1843,17 @@ function onWorkspaceChange(ev) {
       scheduleRender(false);
       break;
     }
+    case "rp-col": {
+      const key = t.dataset.key;
+      const now = new Set(visibleReportCols().map((c) => c.key));
+      if (t.checked) now.add(key); else now.delete(key);
+      /* 並びは定義順に揃える（選択順にはしない）。全部外したら既定の全表示へ戻す。 */
+      const keys = defaultReportCols().filter((k) => now.has(k));
+      state.reportCols = keys.length ? keys : defaultReportCols();
+      saveReportCols();
+      scheduleRender(false);
+      break;
+    }
   }
 }
 elStage.addEventListener("change", onWorkspaceChange);
@@ -1845,6 +1887,14 @@ document.addEventListener("click", (ev) => {
     menu.hidden = true;
     btnMore.setAttribute("aria-expanded", "false");
   }
+});
+/* レポートの「表示項目」も、外側をクリックしたら閉じる（開閉の状態は state 側） */
+document.addEventListener("click", (ev) => {
+  if (!state.reportColsOpen) return;
+  const t = ev.target;
+  if (t && t.closest && (t.closest("#rpColsMenu") || t.closest('[data-act="rp-cols"]'))) return;
+  state.reportColsOpen = false;
+  scheduleRender(false);
 });
 menu.addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-act]");
@@ -1953,5 +2003,6 @@ const mq = window.matchMedia("(prefers-color-scheme: dark)");
  * 起動
  * ==========================================================================*/
 loadParams();
+loadReportCols();
 buildSettings();
 renderAll();

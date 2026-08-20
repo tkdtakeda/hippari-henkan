@@ -123,6 +123,15 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .menu hr{ border:0; border-top:1px solid var(--border); margin:var(--sp-2) 0; }
 .menu__danger{ color:var(--err-text); }
 .menu__note{ padding:0 var(--sp-3) var(--sp-2); font-size:var(--fs-1); color:var(--text-muted); }
+/* チェックボックス一覧のメニュー（レポートの「表示項目」） */
+.menu--cols{ max-height:min(60vh,420px); overflow:auto; }
+.menu__check{
+  display:flex; align-items:center; gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--r-1);
+  font-size:var(--fs-3); cursor:pointer;
+}
+.menu__check:hover{ background:var(--surface-sunken); }
+.menu__check input{ flex:none; }
 
 /* ============================================================
    レイアウト本体

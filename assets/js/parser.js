@@ -40,7 +40,6 @@ const REPORT_FIELDS = [
   ["耐力点試験力",          "N",      ["耐力点1_試験力"]],
 ];
 
-const MARKER = Uint8Array.from([0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01]);
 const CHANNELS = [["Time_sec", -8], ["Stroke_mm", -4], ["Force_N", 29], ["Extensometer_mm", 37]];
 const BYTES_試験条件 = Uint8Array.from([0xE8, 0xA9, 0xA6, 0xE9, 0xA8, 0x93, 0xE6, 0x9D, 0xA1, 0xE4, 0xBB, 0xB6]);
 const BYTES_TXVFileVersion = Uint8Array.from([...("TXVFileVersion")].map((c) => c.charCodeAt(0)));
@@ -444,10 +443,31 @@ function supplementXtuxDims(cond, u8tokens) {
 }
 
 /* ───────────────── 生波形（§5.5） ───────────────── */
+
+/**
+ * 波形マーカー 01 00 00 00 [00|01] 01 01 を走査する。
+ * 5 バイト目は破断前 = 0x00 / 破断後 = 0x01 のフラグで、チャネルのオフセットも
+ * レコード周期（stride）も前後で変わらない。0x00 固定で探すと、応力がゼロへ落ちて
+ * いく破断後のレコードが丸ごと欠落する（線図が破断点でぷっつり切れる）ため、
+ * ここでは両方を受理する。緩めたことで増える偽マーカーは stride フィルタが弾く。
+ */
+function findWaveMarkers(d) {
+  const out = [];
+  const n = d.length - 6;
+  for (let i = 0; i < n; i++) {
+    if (d[i] === 0x01 && d[i + 1] === 0x00 && d[i + 2] === 0x00 &&
+        d[i + 3] === 0x00 && (d[i + 4] === 0x00 || d[i + 4] === 0x01) &&
+        d[i + 5] === 0x01 && d[i + 6] === 0x01) {
+      out.push(i);
+    }
+  }
+  return out;
+}
+
 function extractWaveform(data) {
-  const pos = findAllBytes(data, MARKER);
+  const pos = findWaveMarkers(data);
   if (pos.length < 20) {
-    return { ok: false, reason: `波形マーカー（01 00 00 00 00 01 01）の検出数が ${pos.length} 個（20 個未満）`, points: 0 };
+    return { ok: false, reason: `波形マーカー（01 00 00 00 [00/01] 01 01）の検出数が ${pos.length} 個（20 個未満）`, points: 0 };
   }
   const counts = new Map();
   for (let i = 0; i < pos.length - 1; i++) {

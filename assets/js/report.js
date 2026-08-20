@@ -1,12 +1,14 @@
 /* ============================================================================
- * report.js — レポートモード（配置優先版）
+ * report.js — レポートモード
  *
- * 用紙 1 枚に「表（上）＋ 応力-変位(伸び) の全体像グラフ（最下部）」を並べる。
- * 表は 名前／単位／測定値／合否判定 の 4 行構成。
+ * 用紙 1 枚に「表（上）＋ 応力-伸び の全体像グラフ（最下部）」を並べる。
+ * 表は 名前／元データ名／単位／合格範囲／測定値／合否判定 の構成で、
+ * 出す列は「表示項目」で選べる（visibleReportCols）。
  *
- * ★ いまの段階は「見栄えを確定させる」ためのもの。表の測定値と合否判定は
- *   配置確認用の仮の値で、解析結果との結合は次の工程で行う（画面にもそう書く）。
- *   ここを差し替えるときは REPORT_COLS の value / judge を実データから作る。
+ * 正式な書面として出すため、用紙の中には説明文を置かない。値の出どころや
+ * 算出できない理由は、セルのツールチップ（title）だけで見せる。
+ *
+ * グラフの横軸は元 Trapezium と同じ「変位計1(ひずみ)(%)」＝伸び計基準のひずみ。
  *
  * 単一のグローバルスコープで動く古典スクリプト（file:// で ES Module は
  * CORS で読めないため、あえて module にしない）。読み込み順は index.html を参照。
@@ -54,6 +56,22 @@ const REPORT_COLS = [
   { key: "width",  w: 0.9,  kind: "spec",    name: "幅",               sub: "試験条件",
     unit: "mm",     d: 2, get: (e) => dimOf(e, "幅"), why: (e) => dimWhy(e, "幅") },
 ];
+
+/* ───────────────── 表に出す列の選択 ─────────────────
+ * どの列を出すかはファイル種別・用途で変わる（xtux では弾性率を出さない運用など）。
+ * 選択は state.reportCols（key の配列）に持ち、localStorage へ保存する。
+ * 並び順は選択順ではなく、必ず REPORT_COLS の定義順に揃える。
+ */
+const defaultReportCols = () => REPORT_COLS.map((c) => c.key);
+
+/** 用紙に出す列。選択が空（または全部外れた）ときは既定の全表示に戻す。 */
+function visibleReportCols() {
+  const sel = state.reportCols;
+  if (!Array.isArray(sel) || !sel.length) return REPORT_COLS;
+  const pick = new Set(sel);
+  const list = REPORT_COLS.filter((c) => pick.has(c.key));
+  return list.length ? list : REPORT_COLS;
+}
 
 /** 単語の途中では折り返さない。`_` の直後と `|` の位置だけ改行を許す（`|` は表示しない）。 */
 function labelHtml(s) {
@@ -271,21 +289,22 @@ function reportMeta(e) {
 
 /* ───────────────── 用紙 ───────────────── */
 function reportSheetHtml(e) {
+  const shown = visibleReportCols();                 // ユーザーが選んだ列だけを組む
   /* table-layout:fixed なので、桁の多い列に幅を寄せておく（w は列ごとの重み） */
-  const wSum = REPORT_COLS.reduce((a, c) => a + (c.w || 1), 0);
+  const wSum = shown.reduce((a, c) => a + (c.w || 1), 0);
   const cols = `<colgroup><col style="width:9%">${
-    REPORT_COLS.map((c) => `<col style="width:${(91 * (c.w || 1) / wSum).toFixed(2)}%">`).join("")
+    shown.map((c) => `<col style="width:${(91 * (c.w || 1) / wSum).toFixed(2)}%">`).join("")
   }</colgroup>`;
   /* 見出しは「名前」と「元データ名」の 2 行に分ける。1 つのセルに 2 段を詰めると
      行数の違いで文字の高さが揃わず、横並びがガタガタに見えるため。 */
-  const names = REPORT_COLS.map((c) => `<th scope="col" class="rp__name">${labelHtml(c.name)}</th>`).join("");
-  const subs = REPORT_COLS.map((c) => `<td class="rp__sub">${labelHtml(c.sub)}</td>`).join("");
-  const units = REPORT_COLS.map((c) => `<td class="rp__unit">${esc(c.unit)}</td>`).join("");
-  const ranges = REPORT_COLS.map((c) => {
+  const names = shown.map((c) => `<th scope="col" class="rp__name">${labelHtml(c.name)}</th>`).join("");
+  const subs = shown.map((c) => `<td class="rp__sub">${labelHtml(c.sub)}</td>`).join("");
+  const units = shown.map((c) => `<td class="rp__unit">${esc(c.unit)}</td>`).join("");
+  const ranges = shown.map((c) => {
     const r = reportRange(e, c);
     return `<td class="rp__range rp__range--${r.src}"><span title="${esc(r.why)}">${esc(r.text)}</span></td>`;
   }).join("");
-  const vals = REPORT_COLS.map((c) => {
+  const vals = shown.map((c) => {
     const v = reportValue(e, c);
     if (fin(v.value)) {
       const why = v.src === "file"
@@ -298,7 +317,7 @@ function reportSheetHtml(e) {
       : { text: "取得できず", why: `変換元ファイルに「${(c.srcLabels || []).join("」「")}」の値が見つかりませんでした` };
     return `<td class="rp__val"><span class="rp__na" title="${esc(na.why)}">${na.text}</span></td>`;
   }).join("");
-  const judges = REPORT_COLS.map((c) => {
+  const judges = shown.map((c) => {
     const j = reportJudge(e, c);
     return `<td class="rp__judge">${j.level
       ? statusChip(j.level === "ng" ? "err" : j.level, j.label)
@@ -310,11 +329,11 @@ function reportSheetHtml(e) {
       <dd>${v ? esc(v) : '<span class="rp__none">（なし）</span>'}</dd></div>`).join("");
 
   const A = e.analysis;
-  const canPlot = !!(A && A.series && A.series.stress && A.series.displacement);
+  const canPlot = !!(A && A.series && A.series.stress && A.series.strain);
   const plot = canPlot
-    ? `<div class="rp__chart" id="reportChart" role="img" aria-label="変位（伸び）と応力の全体像グラフ"></div>`
+    ? `<div class="rp__chart" id="reportChart" role="img" aria-label="伸び（ひずみ）と応力の全体像グラフ"></div>`
     : `<div class="rp__chart rp__chart--na">${ICON.warn}<div><b>グラフを描けません</b>
-        ${esc(A && A.series && !A.series.displacement ? "変位（伸び計）データが無いため、応力-変位の線図を描けません。"
+        ${esc(A && A.series && !A.series.strain ? "伸び（ひずみ）データが無いため、応力-伸び線図を描けません。"
           : (e.analysisBlock || "応力が確定していないため作図できません。"))}</div></div>`;
 
   return `<div class="sheet" id="reportSheet">
@@ -338,49 +357,13 @@ function reportSheetHtml(e) {
           <tr><th scope="row" class="rp__rowhead">合否判定</th>${judges}</tr>
         </tbody>
       </table>
-      <p class="sheet__note"><b>測定値も合格範囲も、変換元ファイルから出てくる値をそのまま出しています</b>
-        （このツールの解析値はレポートには入れていません。解析値と見比べるときは 単票 › 解析 タブを使ってください）。
-        寸法は試験条件から取ります。ファイルに値が無い項目は「取得できず」と書き、判定もしません。
-        <b>合格範囲は変換元ファイルに入っている判定範囲</b>をそのまま読み出したもので、
-        応力増加速度・歪速度・弾性率（ヤング率）・クロスヘッド変異速度 の 4 項目が対象です
-        （単票の判定バナーと同じ範囲）。範囲が見つからない項目は空欄にし、合否判定もしません。
-        マウスを重ねると、その欄の出どころや算出できない理由が出ます。</p>
     </section>
 
     <section class="sheet__block sheet__block--chart">
-      <h3 class="sheet__h">応力 － 変位（伸び）　全体像</h3>
+      <h3 class="sheet__h">応力 － 伸び　全体像</h3>
       ${plot}
-      <p class="sheet__note">全体像のため常に全範囲を表示します（拡大して見るときは「単票 › 線図」タブ、または線図の「最大化」を使います）。${breakMarkNote(e)}${extStallNote(e)}</p>
     </section>
   </div>`;
-}
-
-/** グラフの × が何を指しているかを用紙に書く */
-function breakMarkNote(e) {
-  const f = fileValue(e, { srcLabels: ["破断点_変位(ひずみ)", "破断点_At"] });
-  if (!f) return "";
-  return ` <b>×</b> は変換元ファイルの「${esc(f.label)}」の位置（伸び ${fmtNum(f.value, 2)} %`
-    + ` ＝ 変位 ${fmtNum((f.value / 100) * state.params.gaugeLength, 3)} mm・ゲージ長 ${fmtNum(state.params.gaugeLength, 1)} mm で換算）です。`;
-}
-
-/**
- * 伸び計が試験の途中で止まっている（破断で外す装置など）ときに、グラフが途中で
- * 終わって見える理由を用紙にも書く。データが欠けているわけではない。
- */
-function extStallNote(e) {
-  if (!e.wave || !e.wave.ok || !e.wave.columns.Extensometer_mm) return "";
-  const ext = channelEnds(e.wave).find((c) => c.name === "Extensometer_mm");
-  if (!ext || !ext.stalled) return "";
-  const A = e.analysis;
-  let upTo = "";
-  if (A && A.series && A.series.strainStroke) {
-    let m = -Infinity;
-    for (const v of A.series.strainStroke) if (fin(v) && v > m) m = v;
-    if (isFinite(m)) upTo = `ストローク基準では ${fmtNum(m, 1)} % まで続きます。`;
-  }
-  return ` <b>伸び計は第 ${(ext.last + 1).toLocaleString("ja-JP")} 点`
-    + `${fin(ext.lastTime) ? `（${fmtNum(ext.lastTime, 1)} sec）` : ""} で止まっています</b>`
-    + `（破断で外す装置ではここで値が動かなくなります）。${upTo}波形データは全 ${e.wave.points.toLocaleString("ja-JP")} 点そろっています。`;
 }
 
 /* ───────────────── レポートモードの画面 ───────────────── */
@@ -414,6 +397,7 @@ function reportHtml(e) {
     <button class="chip" data-act="rp-title-reset" ${custom ? "" : `disabled title="いま既定のタイトルです"`}>${ICON.reset}<span>既定に戻す</span></button>
     <span class="reportbar__hint">既定は <b class="mono">ロットNo._引張試験結果</b>（ロット No. はファイル名から取ります）</span>
     <span class="spacer"></span>
+    ${reportColsMenu()}
     <span class="reportbar__zoom">
       <div class="seg" role="group" aria-label="用紙の表示倍率">
         <button data-act="rp-zoom" data-z="fit" aria-pressed="${zoom === "fit"}">全体表示</button>
@@ -434,20 +418,48 @@ function reportHtml(e) {
 }
 
 /**
- * 変換元ファイルの破断点を、用紙のグラフ（応力 － 変位）に置く座標へ直す。
- * ファイルの値は伸び [%] なので、変位 [mm] = 伸び ÷ 100 × ゲージ長。
- * 応力は、その変位にいちばん近い測定点の値を使う（線の上に印が乗るように）。
+ * 「表示項目」— 用紙の表に出す列を選ぶ。
+ * 選択は次の描画でも残す必要があるので、開閉の状態も state に持つ
+ * （チェックのたびに再描画が走り、hidden 属性を直に触ると閉じてしまうため）。
+ */
+function reportColsMenu() {
+  const shown = new Set(visibleReportCols().map((c) => c.key));
+  const open = !!state.reportColsOpen;
+  /* id を振っておくと、チェックのたびの再描画をまたいでフォーカスが戻る（renderStage） */
+  const items = REPORT_COLS.map((c) => `<label class="menu__check">
+      <input type="checkbox" id="rpCol_${esc(c.key)}" data-act="rp-col" data-key="${esc(c.key)}" ${shown.has(c.key) ? "checked" : ""}>
+      <span>${esc(c.name.replace(/\|/g, ""))}</span>
+    </label>`).join("");
+  const isDefault = shown.size === REPORT_COLS.length;
+  return `<span class="menu-wrap">
+    <button class="chip" data-act="rp-cols" aria-expanded="${open}" aria-controls="rpColsMenu">
+      <span>表示項目</span><b class="chip__size">${shown.size}/${REPORT_COLS.length}</b>
+    </button>
+    <div class="menu menu--cols" id="rpColsMenu" ${open ? "" : "hidden"}>
+      ${items}
+      <hr>
+      <button data-act="rp-cols-reset" ${isDefault ? `disabled title="いま既定（すべて表示）です"` : ""}>既定に戻す（すべて表示）</button>
+      <p class="menu__note">選んだ内容はこの端末に保存され、次に開いたときも同じ列で出ます。
+        チェックを全部外すと、すべて表示に戻ります。</p>
+    </div>
+  </span>`;
+}
+
+/**
+ * 変換元ファイルの破断点を、用紙のグラフ（応力 － 伸び）に置く座標へ直す。
+ * 横軸が伸び計基準のひずみ [%] なので、ファイルの値をそのまま X に置く（換算しない）。
+ * 応力は、そのひずみにいちばん近い測定点の値を使う（線の上に印が乗るように）。
  */
 function fileBreakPoint(e, A) {
   const f = fileValue(e, { srcLabels: ["破断点_変位(ひずみ)", "破断点_At"] });
-  if (!f || !A || !A.series.displacement || !A.series.stress) return null;
-  const x = (f.value / 100) * state.params.gaugeLength;
+  if (!f || !A || !A.series.strain || !A.series.stress) return null;
+  const x = f.value;
   if (!fin(x)) return null;
-  const dsp = A.series.displacement, str = A.series.stress;
+  const stn = A.series.strain, str = A.series.stress;
   let bi = -1, bd = Infinity;
-  for (let i = 0; i < dsp.length; i++) {
-    if (!fin(dsp[i]) || !fin(str[i])) continue;
-    const d = Math.abs(dsp[i] - x);
+  for (let i = 0; i < stn.length; i++) {
+    if (!fin(stn[i]) || !fin(str[i])) continue;
+    const d = Math.abs(stn[i] - x);
     if (d < bd) { bd = d; bi = i; }
   }
   if (bi < 0) return null;
@@ -479,25 +491,26 @@ function watchReportSheet() {
   reportRO.observe(wrap);
 }
 
-/* ───────────────── 用紙のグラフ（応力 － 変位の全体像） ───────────────── */
+/* ───────────────── 用紙のグラフ（応力 － 伸びの全体像） ─────────────────
+ * 横軸は元 Trapezium と同じ「変位計1(ひずみ)(%)」＝伸び計基準のひずみに合わせる。 */
 function mountReportChart(e) {
   const host = $("#reportChart", elStage);
   if (!host || !e || !e.analysis) return;
   const A = e.analysis;
-  const base = seriesFor(A, "displacement", "stress");
+  const base = seriesFor(A, "strain", "stress");
   if (!base || !base.xs.length) return;
 
   const spec = {
-    xLabel: AXES.displacement.label, yLabel: AXES.stress.label,
-    xUnit: AXES.displacement.unit, yUnit: AXES.stress.unit,
-    xShort: AXES.displacement.short, yShort: AXES.stress.short,
+    xLabel: AXES.strain.label, yLabel: AXES.stress.label,
+    xUnit: AXES.strain.unit, yUnit: AXES.stress.unit,
+    xShort: AXES.strain.short, yShort: AXES.stress.short,
     series: [{ ...base, color: cssVar("--chart-line"), width: 1.6, primary: true }],
     markers: [], bands: [],
   };
   /* 注釈は 最大点 Rm と、変換元ファイルの破断点だけ。
      破断点はこのツールの検出（試験段階）ではなく、ファイルの 破断点_変位(ひずみ) を使う。
-     ファイルの値はひずみ [%] なので、X 軸（変位 mm）へは ゲージ長で戻して置く。 */
-  const at = (i) => (i != null && A.series.displacement ? A.series.displacement[i] : NaN);
+     ファイルの値はひずみ [%] なので、X 軸（ひずみ %）へはそのまま置く。 */
+  const at = (i) => (i != null && A.series.strain ? A.series.strain[i] : NaN);
   if (A.rm && fin(at(A.rm.index))) {
     spec.markers.push({ x: at(A.rm.index), y: A.rm.value, shape: "circle", color: cssVar("--chart-line-2"), label: "Rm" });
   }
