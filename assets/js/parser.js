@@ -308,15 +308,22 @@ function mergeElongation(results, rec) {
 }
 
 /* ============================================================================
- * 装置方式の弾性直線の材料（別紙: 耐力線・弾性率計算区間表示 §3・§6）
+ * 弾性率計算区間の抽出（別紙: 弾性率計算区間および 0.2% 耐力線 再現仕様書 §6・§13）
  *
- * 装置は「耐力の 0.2 倍の点」と「0.6 倍の点」の 2 点を通る直線で弾性率を出している。
- * その 2 点をファイルから復元できれば、装置と同じ弾性直線・0.2% オフセット線・
- * 耐力点を描ける。ここでは波形には触らず、ファイルが持っている数値だけを正規化する。
+ * 装置は「弾性率をどの区間で求めたか」をファイルに残している。その区間の実波形点を
+ * 回帰すれば、装置と同じ弾性直線が引ける。ここでは波形に触らず、区間の数値だけを
+ * 正規化する。
  *
- *  vtav … 結果サマリーに「耐力×0.2」「耐力×0.6」と、対応する中間点 1・2 が入る。
- *         中間点1 が 60% 側、中間点2 が 20% 側。
- *  xtux … 弾性率_Standard のパラメータに計算区間が入る（例:「試験力 4667 - 14001 N」）。
+ * ★「0.2」は **ひずみ 0.2% のオフセット量**であって、耐力の 20% ではない。
+ *   `耐力×0.2` / `耐力×0.6` は耐力応力に対する倍率で、計算区間とは別物なので、
+ *   参考値としてだけ持ち、正式な計算端点には使わない（§3.3）。
+ *
+ * 取得の優先順位（§6.2）:
+ *   1. 弾性率_Standard のパラメータの試験力区間
+ *   2. 同じく応力区間
+ *   3. 中間点1・中間点2 の試験力（番号は固定せず、数値の大小で下限・上限を決める）
+ *   4. 中間点1・中間点2 の応力（同上）
+ *   5. 復元不可
  * ==========================================================================*/
 
 /** 結果サマリーから、候補ラベルの順に最初の 1 件を返す */
@@ -335,11 +342,10 @@ function resultNum(results, labels) {
 }
 
 /**
- * 弾性率_Standard のパラメータから計算区間を読む。
- *   「試験力 4667 - 14001 N」 → { kind:"force", lo:4667, hi:14001, unit:"N" }
- *   「応力 24.2 - 72.6 N/mm2」 → { kind:"stress", ... }
- * 区切りは -／–／〜／~ のどれでもよい。末尾の単位は落ちていても構わない
- * （見出し語から決められるため）。
+ * 弾性率_Standard のパラメータから計算区間を読む（§6.1）。
+ *   「試験力 4667 - 14001 N」   → { kind:"force",  lo:4667, hi:14001, unit:"N" }
+ *   「応力 28.5 - 85.6 N/mm2」  → { kind:"stress", lo:28.5, hi:85.6,  unit:"N/mm2" }
+ * 区切りは -／–／〜／~ のどれでもよい。末尾の単位は落ちていても見出し語から決まる。
  */
 const SPAN_RE = /(試験力|応力|荷重)\s*([-+]?[\d.]+)\s*[-–—〜~]\s*([-+]?[\d.]+)/;
 function parseElasticSpan(param) {
@@ -360,34 +366,78 @@ function midPointOf(results, prefix) {
     const v = r ? parseFloat(String(r.value).replace(/,/g, "")) : NaN;
     return isFinite(v) ? v : NaN;
   };
-  const p = {
+  return {
     label: prefix,
     force: grab(["試験力"]),
     stress: grab(["応力"]),
     disp: grab(["変位計"]),
     time: grab(["時間"]),
   };
-  p.any = fin(p.force) || fin(p.stress) || fin(p.disp);
-  return p;
+}
+
+/** 中間点 2 件から計算区間を組み立てる（番号ではなく数値の大小で上下を決める・§6.3） */
+function spanFromMidPoints(mid1, mid2, key, kind, unit, text) {
+  const a = mid1[key], b = mid2[key];
+  if (!fin(a) || !fin(b) || a === b) return null;
+  return { kind, lo: Math.min(a, b), hi: Math.max(a, b), unit, text };
 }
 
 /**
- * 装置方式を組み立てるための材料をまとめて取り出す。
- * 使える／使えないの判断と、実際の直線の算出は解析側（analysis.js）で行う。
+ * vtav の結果サマリーはパラメータ欄を持たない（値アンカー方式で label/value しか出ない）。
+ * 計算区間の文字列は 弾性率_Standard のラベル近くに素の文字列として置かれているので、
+ * ラベルの前後の窓から「区間らしいトークン」を拾って、xtux の param と同じ扱いにする。
  */
-function extractElasticSource(fmt, results) {
+function spanFromTokens(tokens, label = "弾性率_Standard", window = 12) {
+  const list = tokens || [];
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].text !== label) continue;
+    /* ラベルの後ろを先に見る（パラメータは後ろに並ぶことが多い） */
+    for (const range of [[i + 1, Math.min(list.length, i + window)], [Math.max(0, i - window), i]]) {
+      for (let j = range[0]; j < range[1]; j++) {
+        const sp = parseElasticSpan(list[j].text);
+        if (sp) return sp;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * 弾性率計算区間と照合用の値をまとめて取り出す（§13.1）。
+ * どこから取った区間かは spanSource に残し、画面と CSV に出す。
+ */
+function extractElasticSource(fmt, results, tokens) {
   const std = resultOf(results, ["弾性率_Standard"]);
+  const mid1 = midPointOf(results, "中間点1");
+  const mid2 = midPointOf(results, "中間点2");
+
+  let span = parseElasticSpan(std ? std.param : "");
+  let spanSource = span ? "弾性率_Standard の計算区間" : "";
+  let fallback = false;
+
+  if (!span) {
+    span = spanFromTokens(tokens);
+    if (span) spanSource = "弾性率_Standard の計算区間";
+  }
+
+  if (!span) {
+    span = spanFromMidPoints(mid1, mid2, "force", "force", "N", "中間点1・中間点2の試験力");
+    if (span) { spanSource = "中間点1・中間点2の試験力"; fallback = true; }
+  }
+  if (!span) {
+    span = spanFromMidPoints(mid1, mid2, "stress", "stress", "N/mm2", "中間点1・中間点2の応力");
+    if (span) { spanSource = "中間点1・中間点2の応力"; fallback = true; }
+  }
+
   return {
-    fmt,
-    rp: resultNum(results, ["耐力点1_応力", "耐力点1Rp"]),      // 正式な耐力 [N/mm²]
-    s20: resultNum(results, ["耐力×0.2"]),                      // 20% 点の応力 [N/mm²]
-    s60: resultNum(results, ["耐力×0.6"]),                      // 60% 点の応力 [N/mm²]
-    mid20: midPointOf(results, "中間点2"),                      // 中間点2 = 20% 側
-    mid60: midPointOf(results, "中間点1"),                      // 中間点1 = 60% 側
-    youngNmm2: resultNum(results, ["弾性率_Standard"]),          // 照合用 [N/mm²]
-    youngGpa: resultNum(results, ["ヤング率"]),                  // 照合用 [GPa]
-    gauge: resultNum(results, ["変位計1標点距離"]),              // 標点距離 [mm]
-    span: parseElasticSpan(std ? std.param : ""),               // xtux の計算区間
+    fmt, span, spanSource, spanFallback: fallback, mid1, mid2,
+    rp: resultNum(results, ["耐力点1_応力", "耐力点1Rp"]),
+    youngNmm2: resultNum(results, ["弾性率_Standard"]),
+    youngGpa: resultNum(results, ["ヤング率"]),
+    gauge: resultNum(results, ["変位計1標点距離"]),
+    /* 参考値。計算区間・弾性直線・0.2% オフセットの算出には使わない（§3.3・§23） */
+    reference20: resultNum(results, ["耐力×0.2"]),
+    reference60: resultNum(results, ["耐力×0.6"]),
   };
 }
 

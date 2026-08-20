@@ -30,7 +30,9 @@ const state = {
     fractureFile: true,
     fractureA: false,
     fractureB: false,
-    /* 耐力線の方式と表示要素（別紙 §7.1）。既定は装置方式（耐力 20〜60%）。 */
+    annoOpen: false,         // 「重ねる注釈」を開いているか（再描画をまたいで保つ）
+    rangeOpen: false,        // 表示範囲の数値入力をたたんでいるか
+    /* 耐力線の方式と表示要素。既定は装置方式（ファイルの計算区間）。 */
     elasticMethod: "file",   // 'file' = 装置方式 / 'calc' = 解析方式（複数点回帰）
     showElastic: true,       // 弾性直線
     showOffset: true,        // 0.2% オフセット線
@@ -208,7 +210,7 @@ async function processEntry(entry) {
       entry.elongFile = extractElongation(det.fmt, data, entry.results);
       mergeElongation(entry.results, entry.elongFile);
       /* 装置方式の弾性直線の材料（耐力×0.2/0.6・中間点・計算区間） */
-      entry.elasticSrc = extractElasticSource(det.fmt, entry.results);
+      entry.elasticSrc = extractElasticSource(det.fmt, entry.results, tokens);
       entry.report = buildReport(entry.results);
 
       const cond = extractConditions(tokens);
@@ -353,7 +355,8 @@ function runAnalysis(entry) {
     fileElong: fileElongation(entry),
     /* 合否判定はファイルの記録値で行う（レポートの表と同じ値。無い項目は判定しない） */
     judgeValues: fileJudgeValues(entry),
-    elastic: entry.elasticSrc || null,      // 装置方式（耐力 20〜60%）の元情報
+    elastic: entry.elasticSrc || null,      // 弾性率計算区間の元情報
+    areaManual: (entry.areaOverride || {}).mode !== "auto",   // 断面積を手入力しているか
   }, P);
 }
 function reanalyzeAll() {
@@ -1264,6 +1267,87 @@ function jumpList(e, A) {
   ];
 }
 
+/* ============================================================================
+ * 作図ツールバー
+ *
+ * 以前は 18 個ほどの操作が同じ重さで 1 列に並び、「いま何を見ているか」「どう見るか」
+ * 「何が重なっているか」が見分けられなかった。面積は頻度 × 重要度で配り直す（基本設計 §1）。
+ *
+ *   常に見える  … 何の線図か（プリセット・軸）／どこを拡大するか／根拠の注記
+ *   まとめる    … 重ねる注釈（マーカー・耐力線・破断位置）→ 1 つのボタンで開く
+ *   たたむ      … 表示範囲の数値入力と操作の説明（覚えたら使わない）
+ *
+ * 開いた数は文言に入れて数えさせない（§2）。使えないものは理由つきで disabled（§4）。
+ * ==========================================================================*/
+
+/** 重ねられる注釈の「入／全体」を数える。ボタンの文言に出して探させない（§2）。 */
+function annotationCount(A) {
+  const C = state.chart;
+  const L = A && A.elasticLineFile;
+  const method = elasticMethodOf(A);
+  const items = [
+    [true, C.markers],
+    [method === "file" && L && L.available, C.showElastic],
+    [true, C.showOffset],
+    [method === "file" && L && L.available, C.showEnds],
+    [true, C.showProof],
+    [method === "file" && !!(A && A.linear), C.compareCalc],
+    [true, C.fractureFile],
+    [!!(A && A.fractureA), C.fractureA],
+    [!!(A && A.fractureB), C.fractureB],
+  ].filter(([usable]) => usable);
+  return { on: items.filter(([, v]) => v).length, all: items.length };
+}
+
+/** 「重ねる注釈」の中身。方式（何を正とするか）と、重ねる要素を段で分ける。 */
+function annotationMenuHtml(A, isSS) {
+  const C = state.chart;
+  const L = A && A.elasticLineFile;
+  const canFile = !!(L && L.available);
+  const method = elasticMethodOf(A);
+  const open = !!C.annoOpen;
+  const n = annotationCount(A);
+  const chk = (act, on, label, extra = "") =>
+    `<label class="menu__check"><input type="checkbox" data-act="${act}"${extra} ${on ? "checked" : ""}><span>${label}</span></label>`;
+  const fileWhy = canFile
+    ? `${spanText(L)} の実波形 ${L.nPoints} 点を回帰した直線`
+    : (L && L.reasons[0]) || "変換元ファイルから弾性率の計算区間を復元できません";
+
+  return `<span class="menu-wrap">
+    <button class="chip" data-act="anno-toggle" aria-expanded="${open}" aria-controls="annoMenu"
+      ${isSS ? "" : `disabled title="注釈は ひずみ-応力線図のときだけ重ねます"`}>
+      <span>重ねる注釈</span><b class="chip__size">${n.on}/${n.all}</b>${ICON[open ? "arrowU" : "arrowD"]}
+    </button>
+    <div class="menu menu--anno" id="annoMenu" ${open ? "" : "hidden"}>
+      <p class="menu__head">耐力線をどちらで引くか</p>
+      <label class="menu__check" title="${esc(fileWhy)}">
+        <input type="radio" name="elasticMethod" data-act="emethod" data-m="file"
+          ${canFile ? "" : "disabled"} ${method === "file" ? "checked" : ""}>
+        <span>装置方式（ファイル計算区間）<small>${esc(canFile ? spanText(L) : "復元できません")}</small></span></label>
+      <label class="menu__check" title="現行の複数点回帰。解析・比較用">
+        <input type="radio" name="elasticMethod" data-act="emethod" data-m="calc"
+          ${A && A.linear ? "" : "disabled"} ${method === "calc" ? "checked" : ""}>
+        <span>解析方式（複数点回帰）<small>${A && A.linear ? `R² ${A.linear.r2.toFixed(4)}・参考` : "直線域を決められません"}</small></span></label>
+      ${canFile ? "" : `<p class="menu__note">${esc(fileWhy)}</p>`}
+      <hr>
+      <p class="menu__head">耐力線まわりに重ねるもの</p>
+      ${chk("eshow", C.showElastic, "弾性直線", ` data-k="showElastic"${method === "file" && !canFile ? " disabled" : ""}`)}
+      ${chk("eshow", C.showOffset, "0.2% オフセット線", ' data-k="showOffset"')}
+      ${chk("eshow", C.showEnds, "計算区間端点（下限・上限）", ` data-k="showEnds"${method === "file" && canFile ? "" : " disabled"}`)}
+      ${chk("eshow", C.showProof, "耐力点 Rp0.2", ' data-k="showProof"')}
+      ${chk("eshow", C.compareCalc, "解析線を比較表示", ` data-k="compareCalc"${method === "file" && A && A.linear ? "" : " disabled"}`)}
+      <hr>
+      <p class="menu__head">破断位置</p>
+      ${chk("cfracture", C.fractureFile, "レポート値（ファイル記録）", ` data-k="fractureFile"${C.markers ? "" : " disabled"}`)}
+      ${chk("cfracture", C.fractureA, "式①→②法（試験段階）", ` data-k="fractureA"${C.markers && A && A.fractureA ? "" : " disabled"}`)}
+      ${chk("cfracture", C.fractureB, "島津法（試験段階）", ` data-k="fractureB"${C.markers && A && A.fractureB ? "" : " disabled"}`)}
+      <hr>
+      ${chk("cmark", C.markers, "マーカーをすべて隠す／出す")}
+      <p class="menu__note">色と意味は線図の下の凡例に出ます。正式値・再現値・参考値は凡例の文言で見分けられます。</p>
+    </div>
+  </span>`;
+}
+
 /** 作図ツールバー（軸・注釈・表示範囲・ジャンプ） */
 function chartbarHtml(A, K) {
   const C = state.chart;
@@ -1271,9 +1355,9 @@ function chartbarHtml(A, K) {
     `<option value="${k}" ${k === sel ? "selected" : ""} ${A.series[k] ? "" : "disabled"}>${esc(v.label)}</option>`).join("");
   const isSS = K.x === "strain" && K.y === "stress";
   const preset = isSS ? "ss" : (K.x === "time" && K.y === "stress" ? "ts" : "custom");
-  const annOff = isSS ? "" : ' disabled title="注釈は ひずみ-応力線図のときだけ重ねます"';
   const jumps = jumpList(selected(), A);
   const jumpWhy = jumps.filter((j) => !j.ok).map((j) => `${j.label}: ${j.why}`).join("／");
+  const rangeOpen = !!C.rangeOpen;
 
   return `<div class="chartbar">
     <div class="chartbar__row">
@@ -1287,23 +1371,20 @@ function chartbarHtml(A, K) {
            <select class="select select--axis" id="axX" data-act="axis" data-k="x">${axisOpts(K.x)}</select>
            <span class="field__label">Y 軸</span>
            <select class="select select--axis" id="axY" data-act="axis" data-k="y">${axisOpts(K.y)}</select>`}
-      <label class="check-line"><input type="checkbox" data-act="cmark"${annOff} ${C.markers ? "checked" : ""}>マーカー</label>
-      <span class="break-marker-select"${!isSS ? ' hidden' : ''}>
-        <span class="rangebar__label">破断位置:</span>
-        <label class="check-line"><input type="checkbox" data-act="cfracture" data-k="fractureFile" ${C.fractureFile ? "checked" : ""} ${C.markers ? "" : "disabled"}>レポート値</label>
-        <label class="check-line"><input type="checkbox" data-act="cfracture" data-k="fractureA" ${C.fractureA ? "checked" : ""} ${C.markers && A.fractureA ? "" : "disabled"}>式①→②</label>
-        <label class="check-line"><input type="checkbox" data-act="cfracture" data-k="fractureB" ${C.fractureB ? "checked" : ""} ${C.markers && A.fractureB ? "" : "disabled"}>島津法</label>
-      </span>
-      ${elasticBarHtml(A, isSS)}
+      ${annotationMenuHtml(A, isSS)}
       ${K.max ? "" : `<label class="check-line"><input type="checkbox" data-act="cside" ${C.side ? "checked" : ""}>時間-応力を並べる</label>`}
-      <span class="rangebar__hint">
-        <span><kbd>ホイール</kbd> 拡大縮小（<kbd>Shift</kbd> X のみ / <kbd>Alt</kbd> Y のみ）</span>
-        <span><kbd>左ドラッグ</kbd> 移動</span>
-        <span><kbd>右ドラッグ</kbd> 囲って拡大</span>
-        <span><kbd>ダブルクリック</kbd> 全体</span>
-      </span>
     </div>
-    <div class="chartbar__row rangebar">
+    <div class="chartbar__row">
+      <span class="jump">
+        <span class="jump__label">拡大して確認:</span>
+        ${jumps.map((j) => `<button class="chip btn--sm" data-act="jump" data-j="${j.k}" ${j.ok ? "" : `disabled title="${esc(j.why)}"`}>${esc(j.label)}</button>`).join("")}
+      </span>
+      <span class="spacer"></span>
+      <button class="chip btn--sm" data-act="range-toggle" aria-expanded="${rangeOpen}" aria-controls="rangeRow">
+        <span>表示範囲を数値で指定</span>${ICON[rangeOpen ? "arrowU" : "arrowD"]}
+      </button>
+    </div>
+    <div class="chartbar__row rangebar" id="rangeRow" ${rangeOpen ? "" : "hidden"}>
       <span class="rangebar__group">
         <span class="rangebar__label">X</span>
         <input id="rngXMin" type="number" step="any" data-act="range" data-k="xMin" aria-label="X 軸の下限">
@@ -1321,15 +1402,16 @@ function chartbarHtml(A, K) {
         <button class="nudge" data-act="nudge" data-d="yd" title="Y を下へ 15% 動かす">${ICON.arrowD}</button>
         <button class="nudge" data-act="nudge" data-d="yu" title="Y を上へ 15% 動かす">${ICON.arrowU}</button>
       </span>
-      <span class="rangebar__div"></span>
-      <span class="jump">
-        <span class="jump__label">拡大して確認:</span>
-        ${jumps.map((j) => `<button class="chip btn--sm" data-act="jump" data-j="${j.k}" ${j.ok ? "" : `disabled title="${esc(j.why)}"`}>${esc(j.label)}</button>`).join("")}
+      <span class="rangebar__hint">
+        <span><kbd>ホイール</kbd> 拡大縮小（<kbd>Shift</kbd> X のみ / <kbd>Alt</kbd> Y のみ）</span>
+        <span><kbd>左ドラッグ</kbd> 移動</span>
+        <span><kbd>右ドラッグ</kbd> 囲って拡大</span>
+        <span><kbd>ダブルクリック</kbd> 全体</span>
       </span>
     </div>
     ${isSS ? elasticNoteHtml(A) : ""}
     ${jumpWhy ? `<p class="chartbar__note">押せない拡大ボタンの理由: ${esc(jumpWhy)}</p>` : ""}
-    ${!isSS ? `<p class="chartbar__note">注釈（耐力線・20%点/60%点・耐力点・破断点×）は ひずみ-応力線図のときに重ねます。</p>` : ""}
+    ${!isSS ? `<p class="chartbar__note">注釈（耐力線・計算区間端点・耐力点・破断点×）は ひずみ-応力線図のときに重ねます。</p>` : ""}
   </div>`;
 }
 
@@ -1488,7 +1570,14 @@ function selectedFracturePoint(e, A) {
  * 表示要素（何を重ねるか）に分ける。既定は装置方式（耐力 20〜60% の 2 点直線）。
  * 装置方式を復元できないファイルでは選べないので、無効にしたうえで理由を出す（§4）。
  * ==========================================================================*/
-/** いま実際に使う方式。装置方式が使えないときは解析方式へ落とす（§2.1 フォールバック）。 */
+/** 計算区間を単位つきで書く（例: 4,667〜14,001 N） */
+function spanText(L) {
+  if (!L || !L.span) return "";
+  const u = L.span.unit === "N/mm2" ? "N/mm²" : L.span.unit;
+  const d = L.span.kind === "stress" ? 1 : 0;
+  return `${fmtNum(L.span.lo, d)}〜${fmtNum(L.span.hi, d)} ${u}`;
+}
+/** いま実際に使う方式。装置方式が使えないときは解析方式へ落とす（フォールバック）。 */
 function elasticMethodOf(A) {
   const want = state.chart.elasticMethod;
   const canFile = !!(A && A.elasticLineFile && A.elasticLineFile.available);
@@ -1499,58 +1588,51 @@ function elasticFellBack(A) {
   return state.chart.elasticMethod === "file" && elasticMethodOf(A) === "calc";
 }
 
-function elasticBarHtml(A, isSS) {
-  const C = state.chart;
-  const L = A && A.elasticLineFile;
-  const canFile = !!(L && L.available);
-  const off = isSS ? "" : ' disabled title="耐力線は ひずみ-応力線図のときだけ重ねます"';
-  const fileWhy = canFile
-    ? `20% 点 ${fmtNum(L.p20.stress, 1)} ／ 60% 点 ${fmtNum(L.p60.stress, 1)} N/mm² の 2 点直線`
-    : (L && L.reasons[0]) || "変換元ファイルから 20% 点・60% 点を復元できません";
-  const method = elasticMethodOf(A);
-  const chk = (act, on, label, extra = "") =>
-    `<label class="check-line"><input type="checkbox" data-act="${act}"${off}${extra} ${on ? "checked" : ""}>${label}</label>`;
-  return `<span class="elastic-bar"${isSS ? "" : " hidden"}>
-    <span class="rangebar__label">耐力線:</span>
-    <label class="check-line" title="${esc(fileWhy)}">
-      <input type="radio" name="elasticMethod" data-act="emethod" data-m="file"${off}
-        ${canFile ? "" : "disabled"} ${method === "file" ? "checked" : ""}>装置方式（耐力20〜60%）</label>
-    <label class="check-line" title="現行の複数点回帰。解析・比較用">
-      <input type="radio" name="elasticMethod" data-act="emethod" data-m="calc"${off}
-        ${A && A.linear ? "" : "disabled"} ${method === "calc" ? "checked" : ""}>解析方式（複数点回帰）</label>
-    ${chk("eshow", C.showElastic, "弾性直線", ' data-k="showElastic"')}
-    ${chk("eshow", C.showOffset, "0.2% オフセット線", ' data-k="showOffset"')}
-    ${chk("eshow", C.showEnds, "20%点・60%点", ` data-k="showEnds"${method === "file" ? "" : " disabled"}`)}
-    ${chk("eshow", C.showProof, "耐力点", ' data-k="showProof"')}
-    ${chk("eshow", C.compareCalc, "解析線を比較表示", ` data-k="compareCalc"${method === "file" && A && A.linear ? "" : " disabled"}`)}
-  </span>`;
-}
-
-/** ツールバーの下に出す、方式の根拠とフォールバックの説明（§2.1・§6） */
+/**
+ * ツールバーの下に出す「いま何を根拠に線を引いているか」（基本設計 §6）。
+ * 走り読みできるよう、事実は 見出し＋値 の小さな塊に分け、要確認は別の行に落とす。
+ */
 function elasticNoteHtml(A) {
   const L = A && A.elasticLineFile;
   const method = elasticMethodOf(A);
-  const bits = [];
+  const fact = (k, v) => `<span class="factlet"><b>${esc(k)}</b>${esc(v)}</span>`;
+
   if (elasticFellBack(A)) {
-    bits.push(`<b>装置方式を復元できないため解析方式を表示しています。</b>${esc((L && L.reasons[0]) || "")}`);
-  } else if (method === "file" && L && L.available) {
-    bits.push(`装置方式: 計算区間 ${esc(fmtNum(L.p20.stress, 1))}〜${esc(fmtNum(L.p60.stress, 1))} N/mm²`
-      + `／弾性率 ${esc(fmtNum(L.youngNmm2, 0))} N/mm²`
-      + (fin(L.deltaYoungPct) ? `（ファイル値との差 ${esc(fmtNum(L.deltaYoungPct, 2))} %）` : "")
-      + `／標点距離 ${esc(L.gaugeFrom)}`);
-    if (L.quality === "wave-nearest") bits.push("端点のひずみは波形の最寄り点で補っています");
-    if (!L.proofPoint) bits.push("<b>交点未検出</b>（0.2% オフセット線が曲線と交わりません。近似では代用しません）");
-    for (const r of L.reasons) bits.push(esc(r));
-  } else if (method === "calc" && A && A.linear) {
-    bits.push(`解析方式: 直線域 ${esc(fmtNum(A.linear.strainFrom, 3))}〜${esc(fmtNum(A.linear.strainTo, 3))} %・R² ${A.linear.r2.toFixed(4)}（参考値）`);
+    return `<p class="chartbar__note chartbar__note--warn">
+      <b>装置方式を復元できないため解析方式を表示しています。</b>${esc((L && L.reasons[0]) || "")}</p>`;
   }
-  return bits.length ? `<p class="chartbar__note">${bits.join("　／　")}</p>` : "";
+  if (method === "file" && L && L.available) {
+    const facts = [
+      fact("計算区間", `${spanText(L)}`),
+      fact("取得元", L.span.source),
+      fact("実波形", `第 ${L.lowerPoint.index + 1}〜${L.upperPoint.index + 1} 点（${L.nPoints} 点を回帰）`),
+      fact("R²", L.r2.toFixed(5)),
+      fact("弾性率", `${fmtNum(L.youngNmm2, 0)} N/mm²`
+        + (fin(L.deltaYoungPct) ? `（ファイル値との差 ${fmtNum(L.deltaYoungPct, 2)} %）` : "")),
+      fact("標点距離", `${fmtNum(L.gaugeLength, 1)} mm`
+        + (L.quality.includes("manual-gauge") ? "（解析設定の値。装置値の完全再現ではありません）" : "")),
+    ].join("");
+    const warn = [];
+    if (!L.proofPoint) warn.push("0.2% オフセット線が曲線と交わりません（交点未検出。近似では代用しません）");
+    for (const r of L.reasons) warn.push(r);
+    return `<p class="chartbar__note chartbar__facts">${facts}</p>`
+      + (warn.length ? `<p class="chartbar__note chartbar__note--warn">${ICON.warn}<span>${esc(warn.join("／"))}</span></p>` : "");
+  }
+  if (method === "calc" && A && A.linear) {
+    return `<p class="chartbar__note chartbar__facts">${
+      [fact("解析方式（参考）", "複数点回帰"),
+       fact("直線域", `${fmtNum(A.linear.strainFrom, 3)}〜${fmtNum(A.linear.strainTo, 3)} %（${A.linear.nPoints} 点）`),
+       fact("R²", A.linear.r2.toFixed(5))].join("")
+    }</p>`;
+  }
+  return "";
 }
 
 /**
- * 耐力線まわりの系列・マーカー・凡例（別紙 §7.2）。
- *   装置方式 … 20%/60% 点（青の円）・弾性直線（青実線）・0.2% オフセット線（橙破線）・耐力点（三角）
- *   解析方式 … 現行の回帰直線（緑）と、その 0.2% オフセット交点
+ * 耐力線まわりの系列・マーカー・凡例（別紙 §16）。
+ *   装置方式 … 計算区間端点（青の円）・弾性直線（青実線／上限以降は破線）・
+ *              0.2% オフセット線（橙破線）・再現耐力点（橙の上向き三角）
+ *   解析方式 … 現行の複数点回帰の直線と、その 0.2% オフセット交点
  * 「比較表示」を入れると、装置方式のときに現行回帰線を灰色細線で重ねる。
  * 正式値と参考値が混ざらないよう、凡例の文言で必ず区別する。
  */
@@ -1564,36 +1646,38 @@ function addElasticSeries(spec, legend, A) {
   });
 
   if (method === "file" && L && L.available) {
-    const { p20, p60 } = L;
-    let xEnd = p60.strain;
+    const lo = L.lowerPoint, hi = L.upperPoint;
+    let xEnd = hi.strain;
     if (L.proofPoint) xEnd = Math.max(xEnd, L.proofPoint.strain * 1.1);
-    xEnd = Math.max(xEnd, p60.strain + 0.3);
+    xEnd = Math.max(xEnd, hi.strain + 0.3);
     if (C.showElastic) {
-      seg(p20.strain, p60.strain, L.line, "--chart-elastic", 2.2);                 // 計算区間は実線
-      seg(p60.strain, xEnd, L.line, "--chart-elastic", 1.6, [5, 4]);               // その先は外挿
-      spec.bands.push({ from: p20.strain, to: p60.strain });
-      legend.push(legendItem(GLYPH.band, "--chart-elastic", "計算区間（耐力20〜60%）",
-        `ε ${fmtNum(p20.strain, 3)}〜${fmtNum(p60.strain, 3)} %`));
-      legend.push(legendItem(GLYPH.line, "--chart-elastic", "弾性直線（耐力20〜60%）",
-        `E ${fmtNum(L.youngNmm2, 0)} N/mm²（${fmtNum(L.youngGpa, 2)} GPa）／破線は外挿`));
+      seg(lo.strain, hi.strain, L.line, "--chart-elastic", 2.2);                  // 計算区間内は実線
+      seg(hi.strain, xEnd, L.line, "--chart-elastic", 1.6, [5, 4]);               // 上限以降は破線
+      spec.bands.push({ from: lo.strain, to: hi.strain });
+      legend.push(legendItem(GLYPH.band, "--chart-elastic", "弾性率の計算区間",
+        `${spanText(L)}／実波形 第 ${lo.index + 1}〜${hi.index + 1} 点・${L.nPoints} 点`));
+      legend.push(legendItem(GLYPH.line, "--chart-elastic", "弾性直線（区間回帰）",
+        `E ${fmtNum(L.youngNmm2, 0)} N/mm²・R² ${L.r2.toFixed(5)}`
+        + (fin(L.deltaYoungPct) ? `／ファイル値との差 ${fmtNum(L.deltaYoungPct, 2)} %` : "")
+        + "／破線は外挿"));
     }
     if (C.showOffset) {
       const ox1 = Math.max(0.2 + 0.05, L.proofPoint ? L.proofPoint.strain * 1.08 : xEnd + 0.2);
       seg(0.2, ox1, L.offsetLine, "--chart-offset", 1.8, [5, 4]);
       legend.push(legendItem(GLYPH.dash, "--chart-offset", "0.2% オフセット線",
-        `σ = ${fmtNum(L.slopePerPct, 1)} × (ε − 0.2)${signedTerm(L.intercept, 1)}`));
+        `σ = ${fmtNum(L.slopePerPct, 1)} × (ε − 0.2)${signedTerm(L.intercept, 1)}（0.2 は ひずみ %）`));
     }
     if (C.showEnds && C.markers) {
-      spec.markers.push({ x: p20.strain, y: p20.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "20%" });
-      spec.markers.push({ x: p60.strain, y: p60.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "60%" });
-      legend.push(legendItem(GLYPH.line, "--chart-elastic", "20% 点・60% 点",
-        `${fmtNum(p20.stress, 1)} ／ ${fmtNum(p60.stress, 1)} N/mm²`
-        + (L.quality === "wave-nearest" ? "（ひずみは波形の最寄り点）" : "")));
+      spec.markers.push({ x: lo.strain, y: lo.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "計算下限" });
+      spec.markers.push({ x: hi.strain, y: hi.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "計算上限" });
+      legend.push(legendItem(GLYPH.line, "--chart-elastic", "計算区間端点（下限・上限）",
+        `${fmtNum(lo.stress, 1)} ／ ${fmtNum(hi.stress, 1)} N/mm²`
+        + (Math.max(lo.offPct, hi.offPct) > 0.005 ? `／指定値との差 最大 ${fmtNum(Math.max(lo.offPct, hi.offPct), 2)} %` : "")));
     }
     if (C.showProof && C.markers && L.proofPoint) {
       spec.markers.push({ x: L.proofPoint.strain, y: L.proofPoint.stress, shape: "triangle-up",
         color: cssVar("--chart-offset"), label: "Rp0.2" });
-      legend.push(legendItem(GLYPH.triUp, "--chart-offset", "耐力点 Rp0.2（再現交点）",
+      legend.push(legendItem(GLYPH.triUp, "--chart-offset", "0.2% 耐力 Rp0.2（再現交点）",
         `${fmtNum(L.proofPoint.stress, 1)} N/mm²`
         + (fin(L.fileProofStress) ? `／正式値 ${fmtNum(L.fileProofStress, 1)}（差 ${fmtNum(L.deltaProofStress, 1)}）` : "")));
     }
@@ -2126,6 +2210,14 @@ function onWorkspaceClick(ev) {
       scheduleRender(false);
       break;
     }
+    case "anno-toggle":
+      state.chart.annoOpen = !state.chart.annoOpen;
+      scheduleRender(false);
+      break;
+    case "range-toggle":
+      state.chart.rangeOpen = !state.chart.rangeOpen;
+      scheduleRender(false);
+      break;
     case "verdict-settings":
       syncSettingsInputs();
       dlg.showModal();
@@ -2217,9 +2309,9 @@ function onWorkspaceChange(ev) {
       state.chart.view = null;              // 軸が変われば表示範囲は作り直す
       scheduleRender(false);
       break;
-    case "cmark": state.chart.markers = t.checked; scheduleRender(false); break;
     case "cfracture": state.chart[t.dataset.k] = t.checked; scheduleRender(false); break;
     case "emethod": state.chart.elasticMethod = t.dataset.m === "calc" ? "calc" : "file"; scheduleRender(false); break;
+    case "cmark": state.chart.markers = t.checked; scheduleRender(false); break;
     case "eshow": state.chart[t.dataset.k] = t.checked; scheduleRender(false); break;
     case "cside": state.chart.side = t.checked; scheduleRender(false); break;
     case "range": {
@@ -2292,6 +2384,14 @@ document.addEventListener("click", (ev) => {
     menu.hidden = true;
     btnMore.setAttribute("aria-expanded", "false");
   }
+});
+/* 線図の「重ねる注釈」も、外側をクリックしたら閉じる */
+document.addEventListener("click", (ev) => {
+  if (!state.chart.annoOpen) return;
+  const t = ev.target;
+  if (t && t.closest && (t.closest("#annoMenu") || t.closest('[data-act="anno-toggle"]'))) return;
+  state.chart.annoOpen = false;
+  scheduleRender(false);
 });
 /* レポートの「表示項目」も、外側をクリックしたら閉じる（開閉の状態は state 側） */
 document.addEventListener("click", (ev) => {

@@ -289,7 +289,7 @@ function reportMeta(e) {
   const yf = fileValue(e, { srcLabels: ["耐力点1_応力", "耐力点1Rp"] });
   const L = A && A.elasticLineFile && A.elasticLineFile.available ? A.elasticLineFile : null;
   const cross = L && L.proofPoint ? L.proofPoint : null;
-  const span = L ? `計算区間 ${fmtNum(L.p20.stress, 1)}〜${fmtNum(L.p60.stress, 1)} N/mm²（耐力の 20〜60%）` : "";
+  const span = L ? `弾性率の計算区間 ${spanText(L)}（${L.span.source}）／実波形 第 ${L.lowerPoint.index + 1}〜${L.upperPoint.index + 1} 点・回帰 ${L.nPoints} 点・R² ${L.r2.toFixed(5)}` : "";
   const repro = cross
     ? `再現交点 ${fmtNum(cross.stress, 1)} N/mm²`
       + (yf ? `（正式値との差 ${fmtNum(cross.stress - yf.value, 1)} N/mm²）` : "")
@@ -300,7 +300,7 @@ function reportMeta(e) {
   const yieldWhy = [
     yf ? `変換元ファイルの「${yf.label}」の値（正式値）` : "変換元ファイルに正式な耐力値がありません",
     !yf && cross ? "表示しているのは装置方式の再現交点です（参考値）" : "",
-    L ? "算出根拠: 耐力 20〜60% の 2 点直線を 0.2% オフセット" : "",
+    L ? "算出根拠: ファイルの計算区間を実波形で回帰した弾性直線を、ひずみ 0.2% ぶん平行移動" : "",
     span, repro,
   ].filter(Boolean).join("／");
 
@@ -541,18 +541,18 @@ function watchReportSheet() {
  */
 function addReportElastic(spec, A) {
   const L = A && A.elasticLineFile;
-  if (!L || !L.available) return;
-  const { p20, p60 } = L;
+  if (!L || !L.available) return;                    // 復元できないときは解析方式で代用しない（§17.3）
+  const lo = L.lowerPoint, hi = L.upperPoint;
   const seg = (x0, x1, f, color, width, dash) => spec.series.push({
     xs: Float64Array.from([x0, x1]), ys: Float64Array.from([f(x0), f(x1)]),
     color: cssVar(color), width, dash, scale: false,
   });
-  const xEnd = L.proofPoint ? L.proofPoint.strain * 1.1 : p60.strain + 0.3;
-  seg(p20.strain, p60.strain, L.line, "--chart-elastic", 2);              // 計算区間は実線
-  seg(p60.strain, xEnd, L.line, "--chart-elastic", 1.4, [5, 4]);          // その先は外挿
+  const xEnd = L.proofPoint ? L.proofPoint.strain * 1.1 : hi.strain + 0.3;
+  seg(lo.strain, hi.strain, L.line, "--chart-elastic", 2);                // 計算区間内は実線
+  seg(hi.strain, xEnd, L.line, "--chart-elastic", 1.4, [5, 4]);           // 上限以降は破線
   seg(0.2, Math.max(0.25, xEnd), L.offsetLine, "--chart-offset", 1.6, [5, 4]);
-  spec.markers.push({ x: p20.strain, y: p20.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "20%" });
-  spec.markers.push({ x: p60.strain, y: p60.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "60%" });
+  spec.markers.push({ x: lo.strain, y: lo.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "下限" });
+  spec.markers.push({ x: hi.strain, y: hi.stress, shape: "circle", color: cssVar("--chart-elastic"), label: "上限" });
   if (L.proofPoint) {
     spec.markers.push({ x: L.proofPoint.strain, y: L.proofPoint.stress, shape: "triangle-up",
       color: cssVar("--chart-offset"), label: "Rp0.2" });
