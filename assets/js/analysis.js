@@ -515,16 +515,32 @@ function analyze(inp, P) {
   } else {
     checks.push({ level: "na", label: "弾性直線域の直線性", detail: "直線域を決定できないため未評価" });
   }
-  /* 合格範囲を持つ項目は、その範囲との突き合わせで合否を出す（レポートの合否判定と同じ） */
+  /* 合格範囲を持つ項目は、その範囲との突き合わせで合否を出す（レポートの合否判定と同じ）。
+   *
+   * 判定に使う測定値は、変換元ファイルが記録している値（inp.judgeValues＝レポートの表と
+   * 同じ値）。装置側で設定していない項目はファイルに値が無いので、**判定しない**。
+   * ここで計算値へ落とすと、設定していない項目を勝手に見て「不合格」にしてしまう。
+   * 記録値を持たない CSV 入力だけは、解析の計算値で判定する（それしか測定値が無いため）。
+   */
+  const useFileValues = !!inp.judgeValues;
   for (const spec of JUDGE_SPECS) {
     const jr = A.judge[spec.key];
     if (!jr) continue;
-    const v = spec.value(A);
-    const r = rangeCheck(v, jr.lo, jr.hi);
+    const v = useFileValues ? inp.judgeValues[spec.key] : spec.value(A);
     const where = jr.src === "file" ? `変換元ファイルの「${jr.label}」` : "設定値（控え）";
+    const band = `許容範囲 ${spec.fmt(jr.lo)}〜${spec.fmt(jr.hi)} ${spec.unit}／${where}`;
+    if (!fin(v)) {
+      /* 判定しない。skip を立てて、全体の合否にも効かせない。 */
+      checks.push({
+        level: "na", skip: true, label: spec.label,
+        detail: `${useFileValues ? "変換元ファイルに測定値が無いため" : "測定値を算出できないため"}判定しません（${band}）`,
+      });
+      continue;
+    }
+    const r = rangeCheck(v, jr.lo, jr.hi);
     checks.push({
       level: r.level, label: spec.label,
-      detail: `${fin(v) ? `${spec.fmt(v)} ${spec.unit}` : r.label}（許容範囲 ${spec.fmt(jr.lo)}〜${spec.fmt(jr.hi)} ${spec.unit}／${where}）`,
+      detail: `${spec.fmt(v)} ${spec.unit}（${band}）`,
     });
   }
   const missing = [];
@@ -539,7 +555,8 @@ function analyze(inp, P) {
   });
   const rank = { ok: 0, warn: 1, ng: 2, na: 1 };
   let worst = "ok";
-  for (const c of checks) if (rank[c.level] > rank[worst]) worst = c.level === "na" ? "warn" : c.level;
+  /* skip = 判定していない項目。合否を左右させない（未設定の項目で落とさないため） */
+  for (const c of checks) if (!c.skip && rank[c.level] > rank[worst]) worst = c.level === "na" ? "warn" : c.level;
   A.verdict = {
     level: A.ok ? worst : "na",
     label: !A.ok ? "解析なし" : worst === "ok" ? "合格" : worst === "warn" ? "要確認" : "不合格",

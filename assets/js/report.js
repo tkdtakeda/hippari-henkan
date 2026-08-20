@@ -165,20 +165,44 @@ function reportRange(e, col) {
   };
 }
 
-/** 合否判定。合格範囲があり、測定値も出ているときだけ出す。 */
+/**
+ * 合否判定。合格範囲があり、**測定値も出ているときだけ**出す。
+ * 装置側で設定していない項目はファイルに測定値が無い。そこで「判定不可」と書くと
+ * 落ちたように見えるので、判定そのものをせず空欄（—）にする。
+ */
 function reportJudge(e, col) {
   if (col.kind === "spec") return { level: "na", label: "対象外", why: "試験片の寸法のため判定の対象外です" };
   const r = reportRange(e, col);
   if (r.src === "none") return { level: null, why: "合格範囲が無いため判定していません" };
   const v = reportValue(e, col);
-  const res = rangeCheck(fin(v.value) ? v.value : NaN, r.lo, r.hi);
+  if (!fin(v.value)) {
+    return {
+      level: null,
+      why: `変換元ファイルに「${(col.srcLabels || []).join("」「")}」の測定値が無いため判定していません`
+        + `（合格範囲 ${colFmtR(col, r.lo)}〜${colFmtR(col, r.hi)} ${col.unit} はファイルに入っています）`,
+    };
+  }
+  const res = rangeCheck(v.value, r.lo, r.hi);
   return {
     level: res.level, label: res.label,
-    why: res.level === "na"
-      ? `変換元ファイルに「${(col.srcLabels || []).join("」「")}」の値が無いため判定できません`
-      : `変換元ファイルの測定値 ${colFmt(col, v.value)} ${col.unit} と`
-        + ` 合格範囲 ${colFmt(col, r.lo)}〜${colFmt(col, r.hi)} ${col.unit} の比較（どちらもファイルの値）`,
+    why: `変換元ファイルの測定値 ${colFmt(col, v.value)} ${col.unit} と`
+      + ` 合格範囲 ${colFmt(col, r.lo)}〜${colFmt(col, r.hi)} ${col.unit} の比較（どちらもファイルの値）`,
   };
+}
+
+/**
+ * 合否判定に使う「変換元ファイルが記録している測定値」。
+ * レポートの表と単票の判定バナーが同じ値を見るように、ここで 1 か所にまとめる。
+ * 値が無い項目は NaN にして、判定そのものをしない合図にする。
+ */
+function fileJudgeValues(entry) {
+  const out = {};
+  for (const col of REPORT_COLS) {
+    if (!col.judge) continue;
+    const f = fileValue(entry, col);
+    out[col.judge] = f ? f.value : NaN;
+  }
+  return out;
 }
 
 /* ───────────────── ファイル名の読み解き ─────────────────

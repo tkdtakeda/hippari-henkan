@@ -337,6 +337,8 @@ function runAnalysis(entry) {
     stressSource: null,                       // DAT は全点 SS 応力を force ÷ A で復元（§11.2 B）
     ranges: entry.passRanges || null,
     fileElong: fileElongation(entry),
+    /* 合否判定はファイルの記録値で行う（レポートの表と同じ値。無い項目は判定しない） */
+    judgeValues: fileJudgeValues(entry),
   }, P);
 }
 function reanalyzeAll() {
