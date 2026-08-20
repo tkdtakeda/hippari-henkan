@@ -116,6 +116,14 @@
 }
 .rp__chart canvas{ position:absolute; inset:0; display:block; }
 .reportbar__zoom{ display:flex; align-items:center; gap:var(--sp-2); align-self:center; }
+/* 判定チップ → 単票の内訳へ飛ぶボタン（「不合格」の理由を探させない） */
+.verdict-link{
+  display:inline-flex; align-items:center; gap:var(--sp-2);
+  padding:0 var(--sp-2) 0 0; border:1px solid var(--border); border-radius:var(--r-pill);
+  background:var(--surface); color:var(--text-muted); font-size:var(--fs-2); cursor:pointer;
+}
+.verdict-link:hover{ border-color:var(--border-strong); color:var(--text); }
+.verdict-link:focus-visible{ outline:2px solid var(--focus); outline-offset:2px; }
 .rp__chart--na{
   display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-4);
   border-style:dashed; color:var(--text-muted); font-size:var(--fs-2);

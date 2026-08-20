@@ -43,6 +43,15 @@ const PARAM_META = [
   { key: "rampMax", label: "応力増加速度 上限（控え）", unit: "MPa/s", step: "0.01", min: 0, group: "判定" },
 ];
 
+/* ───────────────── 判定の内訳に付ける「原因の区分」 ─────────────────
+ * 不合格のとき、ユーザーが真っ先に知りたいのは「どこを直せばいいか」。
+ * 直し先が違う 3 つに分けて、内訳の 1 件ずつに必ず付ける。
+ *   試験   … 装置が記録した値が、装置の判定範囲の外。試験条件そのものの問題
+ *   データ … 変換元ファイルに必要な値が無い／解析できない。ファイル側の問題
+ *   設定   … このツールの設定値が実態と合っていない。設定 › … で直せる
+ */
+const CAUSE = { test: "試験", data: "データ", config: "設定" };
+
 /* ───────────────── 合否判定の対象と許容範囲 ─────────────────
  * 許容範囲は変換元ファイルの合格範囲レコードから取る（別紙仕様）。
  * scale はファイルの単位を画面の単位に合わせる係数（ヤング率は GPa → N/mm²）。
@@ -503,7 +512,12 @@ function analyze(inp, P) {
 
   A.ok = !!(A.rm || A.elongation);
 
-  /* --- 判定（§16.1）：色だけでなく必ず理由を文字で持たせる --- */
+  /* --- 判定（§16.1）：色だけでなく必ず理由を文字で持たせる ---
+   *
+   * 「不合格」とだけ出しても、なぜ・どこを見れば・何が悪いのかが分からない。
+   * 内訳の 1 件ずつに 原因の区分（cause）・次にすること（advice）・行き先（go）を
+   * 必ず持たせて、画面から追えるようにする（基本設計 §2・§6）。
+   */
   const checks = [];
   if (A.linear) {
     const r2 = A.linear.r2;
@@ -511,9 +525,18 @@ function analyze(inp, P) {
     checks.push({
       level: lv, label: "弾性直線域の直線性",
       detail: `R² = ${r2.toFixed(5)}（合格 ≥ ${P.linearityR2Ok} / 要確認 ≥ ${P.linearityR2Warn}）・${A.linear.nPoints} 点`,
+      cause: lv === "ok" ? null : CAUSE.config,
+      advice: lv === "ok" ? ""
+        : "線図で直線域を見てください。拾っている範囲がずれていれば、設定 › 直線域・0.2%耐力 のバンド（× 耐力応力）で直せます",
+      go: { tab: "charts", jump: "linear" }, settings: lv !== "ok",
     });
   } else {
-    checks.push({ level: "na", label: "弾性直線域の直線性", detail: "直線域を決定できないため未評価" });
+    checks.push({
+      level: "na", label: "弾性直線域の直線性", detail: "直線域を決定できないため未評価",
+      cause: CAUSE.data,
+      advice: "弾性域に取れる点が足りません。波形タブで応力・ひずみが最後まで入っているかを確認してください",
+      go: { tab: "waveform" },
+    });
   }
   /* 合格範囲を持つ項目は、その範囲との突き合わせで合否を出す（レポートの合否判定と同じ）。
    *
@@ -534,6 +557,7 @@ function analyze(inp, P) {
       checks.push({
         level: "na", skip: true, label: spec.label,
         detail: `${useFileValues ? "変換元ファイルに測定値が無いため" : "測定値を算出できないため"}判定しません（${band}）`,
+        cause: null, advice: "", go: { tab: "report" },
       });
       continue;
     }
@@ -541,6 +565,12 @@ function analyze(inp, P) {
     checks.push({
       level: r.level, label: spec.label,
       detail: `${spec.fmt(v)} ${spec.unit}（${band}）`,
+      cause: r.level === "ng" ? CAUSE.test : null,
+      advice: r.level === "ng"
+        ? `装置が記録した ${spec.label} が、同じファイルに入っている判定範囲の外です。`
+          + "データの読み違いではなく試験そのものの結果なので、試験速度の設定と試験片の寸法を確認してください"
+        : "",
+      go: { tab: "report" },
     });
   }
   const missing = [];
@@ -548,10 +578,15 @@ function analyze(inp, P) {
   if (!A.yieldV) missing.push("耐力（速度法）");
   if (!A.offset02) missing.push("0.2% 耐力");
   if (!A.elongation) missing.push("伸び");
+  const mLv = missing.length === 0 ? "ok" : (missing.length >= 3 ? "ng" : "warn");
   checks.push({
-    level: missing.length === 0 ? "ok" : (missing.length >= 3 ? "ng" : "warn"),
-    label: "主要値の算出",
+    level: mLv, label: "主要値の算出",
     detail: missing.length === 0 ? "引張強さ・耐力・0.2%耐力・伸びをすべて算出" : `未算出: ${missing.join(" / ")}`,
+    cause: mLv === "ok" ? null : CAUSE.data,
+    advice: mLv === "ok" ? ""
+      : `${missing.length} 件が算出できていません。解析タブの「算出できなかったもの」に 1 件ずつ理由が出ます`
+        + "（断面積とゲージ長が入っているかも、同じタブで確かめられます）",
+    go: { tab: "analysis" },
   });
   const rank = { ok: 0, warn: 1, ng: 2, na: 1 };
   let worst = "ok";

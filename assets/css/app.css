@@ -251,15 +251,74 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 }
 .seg button[aria-pressed="true"]{ background:var(--surface); color:var(--primary-text); box-shadow:var(--sh-1); }
 
-/* ---- 判定バナー ---- */
-.verdict{
-  display:flex; align-items:center; gap:var(--sp-3);
-  padding:var(--sp-2) var(--sp-4); border-bottom:1px solid var(--border); font-size:var(--fs-3);
+/* ---- 判定バナー ----
+   合格なら 1 行。引っかかっているときは開いて、なぜ・どこを見れば・
+   何が悪いのか（試験／データ／設定）まで画面の中で追えるようにする。 */
+.verdict{ border-bottom:1px solid var(--border); font-size:var(--fs-3); }
+.verdict__head{
+  display:flex; align-items:center; gap:var(--sp-3); width:100%;
+  padding:var(--sp-2) var(--sp-4);
+  border:0; background:transparent; color:inherit; font:inherit; text-align:left;
 }
+button.verdict__head{ cursor:pointer; }
+button.verdict__head:hover .verdict__more{ text-decoration:underline; }
+button.verdict__head:focus-visible{ outline:2px solid var(--focus); outline-offset:-2px; }
 .verdict__icon{ display:grid; place-items:center; width:24px; height:24px; border-radius:var(--r-pill); flex:none; }
 .verdict__icon svg{ width:15px; height:15px; }
 .verdict__label{ font-weight:var(--fw-bold); white-space:nowrap; }
 .verdict__why{ color:var(--text-muted); font-size:var(--fs-2); min-width:0; flex:1; }
+.verdict__more{
+  display:flex; align-items:center; gap:var(--sp-1); flex:none;
+  font-size:var(--fs-2); font-weight:var(--fw-med); white-space:nowrap;
+}
+.verdict__more svg{ width:14px; height:14px; }
+
+/* 開いた中身。ページ自体はスクロールさせず、この中だけをスクロールさせる */
+.verdict__body{
+  max-height:min(42vh,420px); overflow:auto;
+  padding:0 var(--sp-4) var(--sp-3); display:grid; gap:var(--sp-2);
+}
+.verdict__body[hidden]{ display:none; }
+
+/* 次にすること: いちばん重い 1 件だけを、上に 1 行で（基本設計 §2） */
+.verdict__next{
+  display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--r-2);
+  background:var(--surface); color:var(--text); font-size:var(--fs-2);
+}
+.verdict__next > b{ flex:none; font-size:var(--fs-2); }
+.verdict__next > span{ flex:1; min-width:0; }
+.verdict__next .chip{ flex:none; }
+
+.verdict__list{ list-style:none; margin:0; padding:0; display:grid; gap:var(--sp-1); }
+.vitem{
+  display:flex; align-items:flex-start; gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--r-2);
+  background:var(--surface); color:var(--text);
+}
+.vitem .status{ flex:none; }
+.vitem__body{ flex:1; min-width:0; display:grid; gap:2px; }
+.vitem__body b{ font-size:var(--fs-3); }
+.vitem__detail,.vitem__advice{ color:var(--text-muted); font-size:var(--fs-2); }
+.vitem__advice{ color:var(--text); }
+.vitem__act{ display:flex; flex-wrap:wrap; gap:var(--sp-1); flex:none; align-self:center; }
+
+/* 原因の区分。色だけでなく必ず文字で出す（基本設計 §3） */
+.vitem__cause{
+  flex:none; padding:2px var(--sp-2); border-radius:var(--r-pill);
+  font-size:var(--fs-1); font-weight:var(--fw-bold); white-space:nowrap;
+  border:1px solid var(--border-strong); color:var(--text-muted);
+}
+.vitem__cause--test{ background:var(--err-bg); color:var(--err-text); border-color:var(--err); }
+.vitem__cause--data{ background:var(--warn-bg); color:var(--warn-text); border-color:var(--warn); }
+.vitem__cause--config{ background:var(--primary-soft); color:var(--primary-text); border-color:var(--primary); }
+
+.verdict__legend{
+  display:flex; flex-wrap:wrap; gap:var(--sp-1) var(--sp-4);
+  padding:0 var(--sp-3); color:var(--text-muted); font-size:var(--fs-1);
+}
+.verdict__legend b{ color:var(--text); }
+.check__act{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); margin-top:var(--sp-1); }
 .verdict--ok{ background:var(--ok-bg); color:var(--ok-text); }
 .verdict--ok .verdict__icon{ background:var(--ok); color:#fff; }
 .verdict--warn{ background:var(--warn-bg); color:var(--warn-text); }

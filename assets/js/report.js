@@ -433,10 +433,18 @@ function reportHtml(e) {
     ${fileTitleParts(e)}
   </div>`;
 
-  const v = e.analysis && e.analysis.verdict ? e.analysis.verdict : { level: "na", label: "解析なし" };
+  const v = e.analysis && e.analysis.verdict ? e.analysis.verdict : { level: "na", label: "解析なし", checks: [] };
+  /* 引っかかっている項目があるときは、押せば単票の内訳へ飛べるようにする。
+     「不合格」とだけ出して、理由を探させない（基本設計 §2）。 */
+  const issues = verdictIssues(v);
+  const chip = statusChip(v.level === "ng" ? "err" : v.level, `判定: ${v.label}`);
   const meta = `<span class="badge">対象 <b>${esc(e.name)}</b></span>
     <span class="badge">用紙 <b>A4 縦</b></span>
-    ${statusChip(v.level === "ng" ? "err" : v.level, `判定: ${v.label}`)}`;
+    ${issues.length
+      ? `<button class="verdict-link" data-act="verdict-open"
+           title="${esc(`${issues.length} 件の内訳を単票で開きます`)}">${chip}
+           <span>内訳を見る（${issues.length} 件）</span></button>`
+      : chip}`;
 
   return shell(`${bar}<div class="sheet-wrap">${reportSheetHtml(e)}</div>`, meta);
 }

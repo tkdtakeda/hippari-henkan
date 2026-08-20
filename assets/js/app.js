@@ -22,6 +22,7 @@ const state = {
   params: { ...DEFAULT_PARAMS },
   sort: { key: "name", dir: 1 },
   reportZoom: "fit",           // レポートの用紙: 'fit'（器に合わせる）| 'actual'（原寸）
+  verdictOpen: null,           // 判定バナーの開閉。null = 既定（不合格のときだけ開く）
   reportCols: defaultReportCols(),  // レポート表に出す列の key（既定は全部）
   reportColsOpen: false,       // 「表示項目」の一覧を開いているか（再描画をまたいで保つ）
   chart: {
@@ -714,10 +715,6 @@ function singleHtml(e) {
   }).join("");
 
   const v = e.analysis && e.analysis.verdict ? e.analysis.verdict : { level: "na", label: "解析なし", checks: [] };
-  const why = v.level === "na"
-    ? esc(e.analysisBlock || "解析に必要なデータが揃っていません")
-    : esc(v.checks.map((c) => `${c.label}: ${c.detail}`).join("　／　"));
-  const vIcon = { ok: ICON.ok, warn: ICON.warn, ng: ICON.err, na: ICON.na }[v.level];
 
   return `<div class="ws">
     <div class="ws__head">
@@ -726,16 +723,123 @@ function singleHtml(e) {
         <div class="ws__meta">${badges.join("")}</div>
       </div>${seg}
     </div>
-    <div class="verdict verdict--${v.level}">
-      <span class="verdict__icon">${vIcon}</span>
-      <span class="verdict__label">判定: ${esc(v.label)}</span>
-      <span class="verdict__why truncate" title="${why}">${why}</span>
-    </div>
+    ${verdictBanner(e, v)}
     <div>
       <div class="tabs" role="tablist">${tabsHtml}</div>
       ${reasons.length ? `<p class="tabs__note">使えないタブの理由: ${esc(reasons.join("／"))}</p>` : ""}
     </div>
     <div class="panel${FIXED_TABS.has(state.tab) ? " panel--fixed" : ""}">${panelHtml(e)}</div>
+  </div>`;
+}
+
+/* ============================================================================
+ * 判定バナー
+ *
+ * 「不合格」の 3 文字だけでは、なぜ・どこを見れば・何が悪いのかが分からない。
+ * バナーを開けるようにして、次の 4 つを画面の中で完結させる。
+ *   1. なぜ            … 引っかかった項目と、その根拠（値・単位・範囲・出どころ）
+ *   2. 何が悪いのか    … 原因の区分（試験 / データ / 設定）を 1 件ずつに付ける
+ *   3. どこを見ればよいか … その場から飛べるボタン（飛べないときは理由つきで disabled）
+ *   4. 次にすること    … いちばん重い 1 件だけを、上に 1 行で出す（基本設計 §2）
+ *
+ * 面積は重要度で配る（§1）。不合格は既定で開き、合格は 1 行のまま。
+ * ==========================================================================*/
+const VERDICT_RANK = { ng: 0, warn: 1, na: 2, ok: 3 };
+const VERDICT_WORD = { ok: "合格", warn: "要確認", ng: "不合格", na: "未評価" };
+/* 行き先のタブと、ボタンに出すことば */
+const GO_LABEL = { report: "レポート項目", charts: "線図", analysis: "解析", results: "結果全項目", waveform: "波形", audit: "変更履歴" };
+
+/** 引っかかっている項目だけを、重い順に並べる（判定していない項目は数えない） */
+function verdictIssues(v) {
+  return (v.checks || []).filter((c) => !c.skip && c.level !== "ok")
+    .slice().sort((a, b) => VERDICT_RANK[a.level] - VERDICT_RANK[b.level]);
+}
+/** 開いているか。既定は「不合格のときだけ開く」。ユーザーが触ったらその指定に従う。 */
+function verdictIsOpen(v) {
+  return state.verdictOpen == null ? v.level === "ng" : !!state.verdictOpen;
+}
+
+/**
+ * 内訳 1 件。根拠・区分・行き先をそろえて出す。
+ * 先頭の 1 件は助言を「次にすること」に出しているので、ここでは繰り返さない。
+ */
+function verdictItemHtml(c, i, avail) {
+  const goTab = c.go && c.go.tab;
+  const canGo = goTab && avail[goTab] !== false;
+  const goWhy = goTab && !canGo ? `${GO_LABEL[goTab]}タブが使えないため飛べません` : "";
+  const buttons = [
+    goTab
+      ? `<button class="chip btn--sm" data-act="verdict-go" data-tab="${esc(goTab)}"
+           ${c.go.jump ? `data-j="${esc(c.go.jump)}"` : ""}
+           ${canGo ? "" : `disabled title="${esc(goWhy)}"`}>${esc(GO_LABEL[goTab])}で確認</button>`
+      : "",
+    c.settings ? `<button class="chip btn--sm" data-act="verdict-settings">設定を開く</button>` : "",
+  ].filter(Boolean).join("");
+  return `<li class="vitem">
+    ${statusChip(c.level === "ng" ? "err" : c.level, VERDICT_WORD[c.level])}
+    ${c.cause ? `<span class="vitem__cause vitem__cause--${c.cause === "試験" ? "test" : c.cause === "データ" ? "data" : "config"}">${esc(c.cause)}</span>` : `<span class="vitem__cause vitem__cause--none">区分なし</span>`}
+    <div class="vitem__body">
+      <b>${esc(c.label)}</b>
+      <span class="vitem__detail">${esc(c.detail)}</span>
+      ${c.advice && i > 0 ? `<span class="vitem__advice">${esc(c.advice)}</span>` : ""}
+      ${goTab && !canGo ? `<span class="vitem__advice">${esc(goWhy)}</span>` : ""}
+    </div>
+    <div class="vitem__act">${buttons}</div>
+  </li>`;
+}
+
+function verdictBanner(e, v) {
+  const vIcon = { ok: ICON.ok, warn: ICON.warn, ng: ICON.err, na: ICON.na }[v.level];
+  const issues = verdictIssues(v);
+
+  /* 解析そのものができていないときは、開く中身が無い。理由だけを 1 行で出す。 */
+  if (!issues.length || v.level === "na") {
+    const why = v.level === "na"
+      ? (e.analysisBlock || "解析に必要なデータが揃っていません")
+      : "確認項目はすべて合格です";
+    return `<div class="verdict verdict--${v.level}">
+      <div class="verdict__head">
+        <span class="verdict__icon">${vIcon}</span>
+        <span class="verdict__label">判定: ${esc(v.label)}</span>
+        <span class="verdict__why truncate" title="${esc(why)}">${esc(why)}</span>
+      </div>
+    </div>`;
+  }
+
+  const open = verdictIsOpen(v);
+  const top = issues[0];
+  const { a: avail } = tabAvailability(e);
+  /* 見出しの 1 行。件数はこちらで数えて文言に入れる（§2 探させない・数えさせない） */
+  const head = `${top.cause ? `［${top.cause}］` : ""}${top.label}`
+    + (issues.length > 1 ? ` ほか ${issues.length - 1} 件` : "");
+  const topTab = top.go && top.go.tab;
+  const topCan = topTab && avail[topTab] !== false;
+
+  return `<div class="verdict verdict--${v.level}">
+    <button class="verdict__head" data-act="verdict-toggle" aria-expanded="${open}" aria-controls="verdictBody">
+      <span class="verdict__icon">${vIcon}</span>
+      <span class="verdict__label">判定: ${esc(v.label)}</span>
+      <span class="verdict__why truncate">${esc(head)}</span>
+      <span class="verdict__more">${open ? "閉じる" : "内訳を見る"}${ICON[open ? "arrowU" : "arrowD"]}</span>
+    </button>
+    <div class="verdict__body" id="verdictBody" ${open ? "" : "hidden"}>
+      <p class="verdict__next">
+        <b>次にすること</b>
+        <span>${esc(top.advice || `${top.label} を確認してください`)}</span>
+        ${topTab ? `<button class="chip" data-act="verdict-go" data-tab="${esc(topTab)}"
+            ${top.go.jump ? `data-j="${esc(top.go.jump)}"` : ""}
+            ${topCan ? "" : `disabled title="${esc(`${GO_LABEL[topTab]}タブが使えないため飛べません`)}"`}
+          >${ICON.arrowR}<span>${esc(GO_LABEL[topTab])}を開く</span></button>` : ""}
+      </p>
+      <ul class="verdict__list">
+        ${issues.map((c, i) => verdictItemHtml(c, i, avail)).join("")}
+      </ul>
+      <p class="verdict__legend"><b>区分の見かた</b>
+        <span><b>試験</b> 装置の測定値が判定範囲の外。試験条件そのものの問題</span>
+        <span><b>データ</b> 変換元ファイルに値が足りない／解析できない</span>
+        <span><b>設定</b> このツールの設定値が実態と合っていない</span>
+      </p>
+    </div>
   </div>`;
 }
 
@@ -958,16 +1062,26 @@ function analysisPanel(e) {
       A.strainRate2 ? A.strainRate2.basis : "耐力点〜破断点の区間が決まりません"),
   ].join("");
 
-  /* 判定の根拠になった場所へ、線図を拡大して飛べるようにする */
-  const inspectOf = (label) =>
-    label.includes("直線") ? "linear" : label.includes("応力増加速度") ? "linear" : label.includes("主要値") ? "all" : null;
-  const canChart = !!(A.series && A.series.stress);
+  /* 判定の根拠になった場所へ飛べるようにする。行き先は解析側が持っている
+     （ラベルの文字列から推し量らない）。飛べないタブは disabled にして理由を出す（§4）。 */
+  const { a: avail } = tabAvailability(e);
   const checks = A.verdict.checks.map((c) => {
-    const j = canChart ? inspectOf(c.label) : null;
+    const goTab = c.go && c.go.tab;
+    const canGo = goTab && avail[goTab] !== false;
+    const goWhy = goTab && !canGo ? `${GO_LABEL[goTab]}タブが使えないため飛べません` : "";
     return `<div class="check">
-      ${statusChip(c.level === "ng" ? "err" : c.level, { ok: "合格", warn: "要確認", ng: "不合格", na: "未評価" }[c.level])}
-      <div class="check__body"><b>${esc(c.label)}</b><span class="muted">${esc(c.detail)}</span>
-        ${j ? `<button class="chip btn--sm" data-act="inspect" data-j="${j}" style="margin-top:var(--sp-1)">線図で確認</button>` : ""}
+      ${statusChip(c.level === "ng" ? "err" : c.level, VERDICT_WORD[c.level])}
+      <div class="check__body">
+        <b>${esc(c.label)}${c.cause ? ` <span class="vitem__cause vitem__cause--${c.cause === "試験" ? "test" : c.cause === "データ" ? "data" : "config"}">${esc(c.cause)}</span>` : ""}</b>
+        <span class="muted">${esc(c.detail)}</span>
+        ${c.advice ? `<span class="muted">${esc(c.advice)}</span>` : ""}
+        ${goTab ? `<span class="check__act">
+            <button class="chip btn--sm" data-act="verdict-go" data-tab="${esc(goTab)}"
+              ${c.go.jump ? `data-j="${esc(c.go.jump)}"` : ""}
+              ${canGo ? "" : `disabled title="${esc(goWhy)}"`}>${esc(GO_LABEL[goTab])}で確認</button>
+            ${c.settings ? `<button class="chip btn--sm" data-act="verdict-settings">設定を開く</button>` : ""}
+            ${canGo ? "" : `<span class="muted">${esc(goWhy)}</span>`}
+          </span>` : ""}
       </div>
     </div>`;
   }).join("");
@@ -1732,6 +1846,7 @@ elRail.addEventListener("click", (ev) => {
   state.selectedId = Number(b.dataset.id);
   if (state.view === "summary") state.view = "single";
   state.chartMax = null;
+  state.verdictOpen = null;                // 別のファイルには前の開閉を持ち込まない
   state.chart.view = null;                 // 別のファイルには前の拡大範囲を持ち込まない
   state.chart.viewSub = null;
   renderAll();
@@ -1819,15 +1934,6 @@ function onWorkspaceClick(ev) {
       state.chart.ovCollapsed = !state.chart.ovCollapsed;
       scheduleRender(false);
       break;
-    case "inspect":
-      state.tab = "charts";
-      state.chartMax = null;
-      state.chart.x = "strain";
-      state.chart.y = "stress";
-      state.chart.view = null;
-      state.chart.pendingJump = t.dataset.j;      // 線図を作ってから拡大する
-      scheduleRender(false);
-      break;
     /* ── 最大化（別ウィンドウで大きく見る） ── */
     case "cmax":
       state.tab = "charts";
@@ -1845,6 +1951,39 @@ function onWorkspaceClick(ev) {
       scheduleRender(false);
       break;
     }
+    /* ── 判定バナー ── */
+    case "verdict-toggle": {
+      const e2 = selected();
+      const v = e2 && e2.analysis ? e2.analysis.verdict : null;
+      state.verdictOpen = !(v ? verdictIsOpen(v) : false);
+      scheduleRender(false);
+      break;
+    }
+    case "verdict-go": {
+      const tab = t.dataset.tab;
+      if (!tab) break;
+      state.view = "single";
+      state.tab = tab;
+      state.chartMax = null;
+      if (t.dataset.j) {                   // 線図はその場所まで拡大して見せる
+        state.chart.x = "strain";
+        state.chart.y = "stress";
+        state.chart.view = null;
+        state.chart.pendingJump = t.dataset.j;
+      }
+      scheduleRender(false);
+      break;
+    }
+    case "verdict-settings":
+      syncSettingsInputs();
+      dlg.showModal();
+      break;
+    case "verdict-open":                   // レポートの判定チップ → 単票の内訳へ
+      state.view = "single";
+      state.tab = "analysis";
+      state.verdictOpen = true;
+      scheduleRender(false);
+      break;
     /* ── 読み取りに失敗したファイル ── */
     case "retry": {
       if (!e) break;
