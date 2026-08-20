@@ -324,15 +324,20 @@ function mergeElongation(results, rec) {
  * ==========================================================================*/
 const RANGE_MARK = Uint8Array.from([0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
 const RANGE_WINDOW = 800;                 // ラベル位置から前方に見る窓（バイト）
+/* min / max は「上限として現実にあり得る値」の窓（ファイルの単位のまま）。
+ * 判定を設定していない項目では、信号チャンネル定義などのバイト列が
+ * たまたま「合格範囲らしく」見えることがある（実測では 弾性率 に
+ * 1.2e-7〜3.4e-7 GPa が入り、ちょうど (0,0) ではないので素通りしていた）。
+ * 桁で弾く。窓は実際の規格値から十分に余裕を取る。 */
 const PASS_RANGE_ITEMS = [
-  { key: "ramp",  labels: ["応力増加速度"],         unit: "MPa/s"  },
-  { key: "srate", labels: ["歪速度"],               unit: "/sec"   },
-  { key: "young", labels: ["ヤング率", "弾性率"],   unit: "GPa"    },  // vtav=ヤング率 / xtux=弾性率
-  { key: "cross", labels: ["クロスヘッド変異速度"], unit: "mm/min" },
+  { key: "ramp",  labels: ["応力増加速度"],         unit: "MPa/s",  min: 1e-3, max: 1e5 },
+  { key: "srate", labels: ["歪速度"],               unit: "/sec",   min: 1e-8, max: 1e2 },
+  { key: "young", labels: ["ヤング率", "弾性率"],   unit: "GPa",    min: 1e-2, max: 1e4 },  // vtav=ヤング率 / xtux=弾性率
+  { key: "cross", labels: ["クロスヘッド変異速度"], unit: "mm/min", min: 1e-4, max: 1e5 },
 ];
 
 /** §3 有効判定フィルタ。1 つでも外れたら「合格範囲ではない」として捨てる。 */
-function validPassRange(d, i) {
+function validPassRange(d, i, item) {
   if (i + 12 > d.length) return null;
   const dv = new DataView(d.buffer, d.byteOffset + i, 12);
   const lo = dv.getFloat32(0, true), mid = dv.getFloat32(4, true), hi = dv.getFloat32(8, true);
@@ -341,6 +346,8 @@ function validPassRange(d, i) {
   if (!(lo < hi)) return null;                                  // 2. 下限 < 上限
   if (!(lo > -1e5 && lo < 1e6 && hi < 1e6)) return null;        // 4. 桁が妥当
   if (lo === 0 && hi === 0) return null;                        // 5. (0,0) は未設定
+  /* 6. 上限が、その項目としてあり得る桁か（ほぼ 0 のゴミを弾く） */
+  if (item && !(hi >= item.min && hi <= item.max)) return null;
   return { lo, hi, mid };
 }
 
@@ -351,10 +358,10 @@ function validPassRange(d, i) {
  * 取ると、項目が近接して並んでいるときに隣の項目の範囲を拾ってしまう（実測で確認）。
  * 打ち切ったときは、その出現位置は諦めて次の出現位置を見る。
  */
-function findPassRange(data, labels, others) {
+function findPassRange(data, item, others) {
   const enc = new TextEncoder();
   const otherNeedles = (others || []).map((x) => enc.encode(x));
-  for (const label of labels) {
+  for (const label of item.labels) {
     const needle = enc.encode(label);
     let idx = 0;
     for (;;) {
@@ -370,7 +377,7 @@ function findPassRange(data, labels, others) {
       for (;;) {
         const m = findBytes(win, RANGE_MARK, k);
         if (m < 0 || m >= limit) break;
-        const r = validPassRange(data, j + m + 8);
+        const r = validPassRange(data, j + m + 8, item);
         if (r) return { ...r, label, at: j + m };
         k = m + 1;
       }
@@ -386,7 +393,7 @@ function extractPassRanges(data) {
   for (const it of PASS_RANGE_ITEMS) {
     /* 自分以外の項目名は「窓の打ち切り」に使う（隣の項目の範囲を拾わないため） */
     const others = PASS_RANGE_ITEMS.filter((x) => x !== it).flatMap((x) => x.labels);
-    const r = findPassRange(data, it.labels, others);
+    const r = findPassRange(data, it, others);
     if (r) out[it.key] = { lo: r.lo, hi: r.hi, label: r.label, unit: it.unit, at: r.at };
   }
   return out;

@@ -78,16 +78,21 @@ function resolveJudgeRanges(fileRanges, P) {
   const out = {};
   for (const spec of JUDGE_SPECS) {
     const f = R[spec.key];
+    let r = null;
     if (f && fin(f.lo) && fin(f.hi)) {
-      out[spec.key] = {
+      r = {
         lo: f.lo * spec.scale, hi: f.hi * spec.scale, src: "file",
         label: f.label, fileLo: f.lo, fileHi: f.hi, fileUnit: f.unit,
       };
     } else if (spec.fb && P[spec.fb.on] && fin(P[spec.fb.lo]) && fin(P[spec.fb.hi])) {
-      out[spec.key] = { lo: P[spec.fb.lo], hi: P[spec.fb.hi], src: "params" };
-    } else {
-      out[spec.key] = null;
+      r = { lo: P[spec.fb.lo], hi: P[spec.fb.hi], src: "params" };
     }
+    /* 画面に出したとき下限と上限が同じ文字になる範囲は採らない。
+       根拠を画面で示せない以上、それで合否を出してはいけない（基本設計 §6）。
+       判定を設定していない項目でゴミの範囲を拾うと、「許容範囲 0〜0」で
+       不合格が出てしまうため、ここでも止める。 */
+    if (r && spec.fmt(r.lo) === spec.fmt(r.hi)) r = null;
+    out[spec.key] = r;
   }
   return out;
 }
