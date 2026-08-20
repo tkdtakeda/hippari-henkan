@@ -721,7 +721,7 @@ function singleHtml(e) {
     return `<div class="ws">
       <div class="ws__head"><div class="ws__id"><div class="ws__name truncate">${esc(e.name)}</div>
         <div class="ws__meta">${badges.join("")}</div></div>${seg}</div>
-      <div></div><div></div>
+      <div></div>
       <div class="panel">${body}</div>
     </div>`;
   }
@@ -1936,7 +1936,7 @@ function summaryHtml() {
       </div>
       ${viewSeg()}
     </div>
-    <div></div><div></div>
+    <div></div>
     <div class="panel panel--fixed">
       <div class="card card--fill">
         <div class="card__head"><span class="card__title">集計表</span>

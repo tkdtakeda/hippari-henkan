@@ -410,7 +410,7 @@ function reportHtml(e) {
         <div class="ws__meta">${meta}</div>
       </div>${viewSeg()}
     </div>
-    <div></div><div></div>
+    <div></div>
     <div class="panel panel--report">${body}</div>
   </div>`;
 
