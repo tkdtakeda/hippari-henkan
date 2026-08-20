@@ -123,6 +123,26 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .menu hr{ border:0; border-top:1px solid var(--border); margin:var(--sp-2) 0; }
 .menu__danger{ color:var(--err-text); }
 .menu__note{ padding:0 var(--sp-3) var(--sp-2); font-size:var(--fs-1); color:var(--text-muted); }
+/* チェックボックス一覧のメニュー（レポートの「表示項目」） */
+.menu--cols{ max-height:min(60vh,420px); overflow:auto; }
+.menu__check{
+  display:flex; align-items:center; gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--r-1);
+  font-size:var(--fs-3); cursor:pointer;
+}
+.menu__check:hover{ background:var(--surface-sunken); }
+.menu__check input{ flex:none; }
+.menu__check input[type="radio"]{ accent-color:var(--primary); }
+.menu__check input:disabled + span{ color:var(--text-muted); }
+.menu__check:has(input:disabled){ cursor:not-allowed; }
+/* 選択肢の下に添える根拠（計算区間・R² など）。文字は落として主従を付ける */
+.menu__check small{ display:block; color:var(--text-muted); font-size:var(--fs-1); }
+/* 重ねる注釈のメニュー。段の見出しで「方式」「重ねるもの」「破断位置」を分ける */
+.menu--anno{ min-width:300px; max-height:min(64vh,480px); overflow:auto; }
+.menu__head{
+  padding:var(--sp-2) var(--sp-3) var(--sp-1); margin:0;
+  font-size:var(--fs-1); font-weight:var(--fw-bold); color:var(--text-muted); letter-spacing:.06em;
+}
 
 /* ============================================================
    レイアウト本体
@@ -215,7 +235,7 @@ button,input,select,textarea{ font:inherit; color:inherit; }
    （これが無いと表やチップの実寸で列が広がり、ページ全体が横スクロールしてしまう） */
 .stage > *, .ws > *, .cols > *, .charts > *, .charts__row > *, .card, .chartcard, .panel > *{ min-width:0; }
 .ws{
-  display:grid; grid-template-rows:auto auto auto minmax(0,1fr); min-height:0; min-width:0;
+  display:grid; grid-template-rows:auto auto minmax(0,1fr); min-height:0; min-width:0;
   background:var(--surface); border:1px solid var(--border); border-radius:var(--r-3);
   box-shadow:var(--sh-1); overflow:hidden;
 }
@@ -242,15 +262,74 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 }
 .seg button[aria-pressed="true"]{ background:var(--surface); color:var(--primary-text); box-shadow:var(--sh-1); }
 
-/* ---- 判定バナー ---- */
-.verdict{
-  display:flex; align-items:center; gap:var(--sp-3);
-  padding:var(--sp-2) var(--sp-4); border-bottom:1px solid var(--border); font-size:var(--fs-3);
+/* ---- 判定バナー ----
+   合格なら 1 行。引っかかっているときは開いて、なぜ・どこを見れば・
+   何が悪いのか（試験／データ／設定）まで画面の中で追えるようにする。 */
+.verdict{ border-bottom:1px solid var(--border); font-size:var(--fs-3); }
+.verdict__head{
+  display:flex; align-items:center; gap:var(--sp-3); width:100%;
+  padding:var(--sp-2) var(--sp-4);
+  border:0; background:transparent; color:inherit; font:inherit; text-align:left;
 }
+button.verdict__head{ cursor:pointer; }
+button.verdict__head:hover .verdict__more{ text-decoration:underline; }
+button.verdict__head:focus-visible{ outline:2px solid var(--focus); outline-offset:-2px; }
 .verdict__icon{ display:grid; place-items:center; width:24px; height:24px; border-radius:var(--r-pill); flex:none; }
 .verdict__icon svg{ width:15px; height:15px; }
 .verdict__label{ font-weight:var(--fw-bold); white-space:nowrap; }
 .verdict__why{ color:var(--text-muted); font-size:var(--fs-2); min-width:0; flex:1; }
+.verdict__more{
+  display:flex; align-items:center; gap:var(--sp-1); flex:none;
+  font-size:var(--fs-2); font-weight:var(--fw-med); white-space:nowrap;
+}
+.verdict__more svg{ width:14px; height:14px; }
+
+/* 開いた中身。ページ自体はスクロールさせず、この中だけをスクロールさせる */
+.verdict__body{
+  max-height:min(42vh,420px); overflow:auto;
+  padding:0 var(--sp-4) var(--sp-3); display:grid; gap:var(--sp-2);
+}
+.verdict__body[hidden]{ display:none; }
+
+/* 次にすること: いちばん重い 1 件だけを、上に 1 行で（基本設計 §2） */
+.verdict__next{
+  display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--r-2);
+  background:var(--surface); color:var(--text); font-size:var(--fs-2);
+}
+.verdict__next > b{ flex:none; font-size:var(--fs-2); }
+.verdict__next > span{ flex:1; min-width:0; }
+.verdict__next .chip{ flex:none; }
+
+.verdict__list{ list-style:none; margin:0; padding:0; display:grid; gap:var(--sp-1); }
+.vitem{
+  display:flex; align-items:flex-start; gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--r-2);
+  background:var(--surface); color:var(--text);
+}
+.vitem .status{ flex:none; }
+.vitem__body{ flex:1; min-width:0; display:grid; gap:2px; }
+.vitem__body b{ font-size:var(--fs-3); }
+.vitem__detail,.vitem__advice{ color:var(--text-muted); font-size:var(--fs-2); }
+.vitem__advice{ color:var(--text); }
+.vitem__act{ display:flex; flex-wrap:wrap; gap:var(--sp-1); flex:none; align-self:center; }
+
+/* 原因の区分。色だけでなく必ず文字で出す（基本設計 §3） */
+.vitem__cause{
+  flex:none; padding:2px var(--sp-2); border-radius:var(--r-pill);
+  font-size:var(--fs-1); font-weight:var(--fw-bold); white-space:nowrap;
+  border:1px solid var(--border-strong); color:var(--text-muted);
+}
+.vitem__cause--test{ background:var(--err-bg); color:var(--err-text); border-color:var(--err); }
+.vitem__cause--data{ background:var(--warn-bg); color:var(--warn-text); border-color:var(--warn); }
+.vitem__cause--config{ background:var(--primary-soft); color:var(--primary-text); border-color:var(--primary); }
+
+.verdict__legend{
+  display:flex; flex-wrap:wrap; gap:var(--sp-1) var(--sp-4);
+  padding:0 var(--sp-3); color:var(--text-muted); font-size:var(--fs-1);
+}
+.verdict__legend b{ color:var(--text); }
+.check__act{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); margin-top:var(--sp-1); }
 .verdict--ok{ background:var(--ok-bg); color:var(--ok-text); }
 .verdict--ok .verdict__icon{ background:var(--ok); color:#fff; }
 .verdict--warn{ background:var(--warn-bg); color:var(--warn-text); }
@@ -278,6 +357,13 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 }
 .tab:disabled{ opacity:.4; cursor:not-allowed; }
 .tab .count{ font-variant-numeric:tabular-nums; opacity:.75; }
+/* 解析タブの数字は「確認したい件数」。色だけでなく丸で囲って形でも区別する（§3） */
+.tab .count--warn,.tab .count--ng{
+  display:inline-grid; place-items:center; min-width:1.35em; padding:0 .35em;
+  border-radius:var(--r-pill); opacity:1; font-weight:var(--fw-bold);
+}
+.tab .count--warn{ background:var(--warn); color:var(--text-on-dark); }
+.tab .count--ng{ background:var(--err); color:#fff; }
 .tabs__note{
   padding:var(--sp-1) var(--sp-4); font-size:var(--fs-1); color:var(--text-muted);
   background:var(--surface-2); border-bottom:1px solid var(--border);
@@ -386,7 +472,9 @@ tr.rowlink{ cursor:pointer; }
 .charts__row{ display:grid; grid-template-columns:minmax(0,1fr); gap:var(--gap); min-height:0; }
 .charts__row.is-split{ grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); }
 @media (max-width:1180px){ .charts__row.is-split{ grid-template-columns:minmax(0,1fr); grid-auto-rows:minmax(220px,1fr); } }
-.chartcard{ position:relative; display:grid; grid-template-rows:auto minmax(0,1fr) auto auto; min-height:0; }
+/* 線図は主役なので、補助表示を全部開いても潰れない下限を持たせる。
+   あふれるぶんは補助表示の側（.chartfoot）を内側でスクロールさせて吸収する。 */
+.chartcard{ position:relative; display:grid; grid-template-rows:auto minmax(var(--h-chart-min),1fr) auto; min-height:0; }
 
 /* キャンバスは絶対配置にして「自分の幅がグリッド列幅を押し広げる」ループを断つ */
 .chart-host{ position:relative; min-height:0; min-width:0; overflow:hidden; cursor:crosshair; }
@@ -412,18 +500,22 @@ tr.rowlink{ cursor:pointer; }
 .chart-zoomstate .badge{ background:var(--surface); box-shadow:var(--sh-1); }
 
 /* ミニマップ */
-.overview{
-  display:grid; grid-template-rows:auto minmax(0,1fr); min-height:0;
+/* 線図の下の補助表示（全体図・凡例）。どちらも既定はたたみ、線図に面積を渡す（§1）。
+   別々の帯に分けると 2 段ぶん取られるので、開閉ボタンは 1 本の帯にまとめる。 */
+.chartfoot{
   border-top:1px solid var(--border); background:var(--surface-2);
+  max-height:min(42vh,340px); overflow:auto;
 }
-.overview__bar{
+.chartfoot__bar{
   display:flex; align-items:center; gap:var(--sp-2);
-  padding:2px var(--sp-3); font-size:var(--fs-1); color:var(--text-muted);
+  padding:var(--sp-1) var(--sp-3); font-size:var(--fs-1); color:var(--text-muted);
 }
-.overview__bar b{ color:var(--text); font-weight:var(--fw-med); }
-.overview__host{ position:relative; min-height:0; height:var(--h-overview); cursor:grab; }
+.chartfoot__hint{ min-width:0; }
+.overview__host{ position:relative; min-height:0; height:var(--h-overview); cursor:grab; display:none; }
 .overview__host:active{ cursor:grabbing; }
-.overview.is-collapsed .overview__host{ display:none; }
+.chartfoot.ov-open .overview__host{ display:block; }
+.chartfoot .legend{ display:none; }
+.chartfoot.lg-open .legend{ display:flex; }
 
 /* 作図ツールバー（設定と表示範囲を 2 段にまとめて縦を節約する） */
 .chartbar{
@@ -433,6 +525,22 @@ tr.rowlink{ cursor:pointer; }
 }
 .chartbar__row{ display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap; min-width:0; }
 .chartbar__note{ font-size:var(--fs-1); color:var(--text-muted); }
+.chartbar__note b{ color:var(--text); }
+/* 根拠は「見出し＋値」の小さな塊に分けて走り読みできるようにする（基本設計 §6） */
+.chartbar__facts{ display:flex; flex-wrap:wrap; gap:var(--sp-1) var(--sp-3); }
+.factlet{ display:inline-flex; align-items:baseline; gap:var(--sp-1); white-space:nowrap; color:var(--text); }
+.factlet b{ color:var(--text-muted); font-weight:var(--fw-med); }
+.chartbar__note--warn{
+  display:flex; align-items:flex-start; gap:var(--sp-2);
+  color:var(--warn-text); font-size:var(--fs-2);
+}
+.chartbar__note--warn svg{ width:14px; height:14px; color:var(--warn); flex:none; margin-top:1px; }
+/* 中身をたたんでいても「要確認がある」ことは見えるようにする */
+.chip--warn{ border-color:var(--warn); background:var(--warn-bg); color:var(--warn-text); }
+.chip--warn svg{ color:var(--warn); }
+.chip--warn .chip__size{ color:var(--warn-text); }
+.chartbar__row .spacer{ margin-left:auto; }
+.chartbar .rangebar[hidden]{ display:none; }
 .chartbar .field__label{ white-space:nowrap; }
 
 /* 表示範囲（数値指定・スクロール） */
@@ -485,6 +593,9 @@ kbd{
 .reason svg{ width:18px; height:18px; color:var(--na); }
 .reason--warn svg{ color:var(--warn); }
 .reason--err svg{ color:var(--err); }
+/* 読み取りに失敗したときの、やり直しボタンを置く行 */
+.reason__act{ display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-3); }
+.reason__act svg{ color:currentColor; }
 
 /* ============================================================
    ドロップ全面オーバーレイ

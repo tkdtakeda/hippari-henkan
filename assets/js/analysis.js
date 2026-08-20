@@ -43,6 +43,15 @@ const PARAM_META = [
   { key: "rampMax", label: "応力増加速度 上限（控え）", unit: "MPa/s", step: "0.01", min: 0, group: "判定" },
 ];
 
+/* ───────────────── 判定の内訳に付ける「原因の区分」 ─────────────────
+ * 不合格のとき、ユーザーが真っ先に知りたいのは「どこを直せばいいか」。
+ * 直し先が違う 3 つに分けて、内訳の 1 件ずつに必ず付ける。
+ *   試験   … 装置が記録した値が、装置の判定範囲の外。試験条件そのものの問題
+ *   データ … 変換元ファイルに必要な値が無い／解析できない。ファイル側の問題
+ *   設定   … このツールの設定値が実態と合っていない。設定 › … で直せる
+ */
+const CAUSE = { test: "試験", data: "データ", config: "設定" };
+
 /* ───────────────── 合否判定の対象と許容範囲 ─────────────────
  * 許容範囲は変換元ファイルの合格範囲レコードから取る（別紙仕様）。
  * scale はファイルの単位を画面の単位に合わせる係数（ヤング率は GPa → N/mm²）。
@@ -69,16 +78,21 @@ function resolveJudgeRanges(fileRanges, P) {
   const out = {};
   for (const spec of JUDGE_SPECS) {
     const f = R[spec.key];
+    let r = null;
     if (f && fin(f.lo) && fin(f.hi)) {
-      out[spec.key] = {
+      r = {
         lo: f.lo * spec.scale, hi: f.hi * spec.scale, src: "file",
         label: f.label, fileLo: f.lo, fileHi: f.hi, fileUnit: f.unit,
       };
     } else if (spec.fb && P[spec.fb.on] && fin(P[spec.fb.lo]) && fin(P[spec.fb.hi])) {
-      out[spec.key] = { lo: P[spec.fb.lo], hi: P[spec.fb.hi], src: "params" };
-    } else {
-      out[spec.key] = null;
+      r = { lo: P[spec.fb.lo], hi: P[spec.fb.hi], src: "params" };
     }
+    /* 画面に出したとき下限と上限が同じ文字になる範囲は採らない。
+       根拠を画面で示せない以上、それで合否を出してはいけない（基本設計 §6）。
+       判定を設定していない項目でゴミの範囲を拾うと、「許容範囲 0〜0」で
+       不合格が出てしまうため、ここでも止める。 */
+    if (r && spec.fmt(r.lo) === spec.fmt(r.hi)) r = null;
+    out[spec.key] = r;
   }
   return out;
 }
@@ -93,6 +107,218 @@ function rangeCheck(value, lo, hi) {
   return (value >= lo && value <= hi)
     ? { level: "ok", label: "合格" }
     : { level: "ng", label: "不合格" };
+}
+
+/* ============================================================================
+ * 弾性率計算区間の再現（別紙: 弾性率計算区間および 0.2% 耐力線 再現仕様書）
+ *
+ * 装置がファイルに残した「弾性率をどの区間で求めたか」から、装置と同じ弾性直線を
+ * 引き直し、そこから 0.2% オフセット線と耐力点を再現する。
+ *
+ *   ファイルの計算区間（試験力 or 応力の下限・上限）
+ *     → 区間端に最も近い実波形点を決める（試験開始〜最大試験力点まで）
+ *     → 区間内の全有効点を最小二乗回帰   σ = m ε + b
+ *     → 弾性率 E[N/mm²] = m × 100 ／ E[GPa] = m / 10
+ *     → オフセット線 σoff = m (ε − 0.2) + b        ★0.2 は ひずみ % のオフセット量
+ *     → 上限点以降〜最大試験力点で曲線と交差する点を線形補間 ＝ 再現 0.2% 耐力
+ *     → ファイルの正式値と突き合わせ、差を記録（正式値は書き換えない）
+ *
+ * ★「0.2」を「耐力の 20%」と取り違えると、装置と線も端点も交点も合わない。
+ *   `耐力×0.2` / `耐力×0.6` は参考値としてだけ持つ。
+ * ==========================================================================*/
+
+/** §7.5・§20 のしきい値（初期値）。外れても計算は続け、要確認として記録する。 */
+const ELASTIC_TOL = {
+  endPct: 1.0,          // 端点差率 [%]
+  youngRelPct: 0.5,     // ファイル弾性率との相対差 [%]
+  minPoints: 5,         // 回帰に要る最小点数（§9.4）
+  r2: 0.99,             // 区間回帰の R² 下限
+};
+
+/**
+ * 計算区間の端（下限 or 上限）に最も近い実波形点を選ぶ（§7）。
+ * 探索は試験開始から最大試験力点まで。除荷後・破断後は採らない。
+ */
+function elasticSpanPoint(span, side, inp, strain, stress, maxIndex, reasons) {
+  const want = side === "lo" ? span.lo : span.hi;
+  const src = span.kind === "stress" ? stress : inp.force;
+  const what = span.kind === "stress" ? "応力" : "試験力";
+  const unit = span.kind === "stress" ? "N/mm²" : "N";
+  if (!src) {
+    reasons.push(`計算区間は${what}ですが、${what}の波形がありません`);
+    return null;
+  }
+  let bi = -1, bd = Infinity;
+  for (let i = 0; i <= maxIndex && i < src.length; i++) {
+    if (!fin(src[i]) || !fin(strain[i]) || !fin(stress[i])) continue;      // §7.4 の 1〜3
+    const d = Math.abs(src[i] - want);
+    if (d < bd) { bd = d; bi = i; }
+  }
+  if (bi < 0) {
+    reasons.push(`計算区間${side === "lo" ? "下限" : "上限"}（${fmtNum(want, 1)} ${unit}）に対応する波形点がありません`);
+    return null;
+  }
+  const offPct = want ? (bd / Math.abs(want)) * 100 : Infinity;
+  return {
+    index: bi, force: inp.force ? inp.force[bi] : NaN,
+    stress: stress[bi], strain: strain[bi],
+    want, gap: bd, offPct,
+    basis: `${what} ${fmtNum(want, 1)} ${unit} に最も近い第 ${bi + 1} 点`
+      + `（実測 ${fmtNum(src[bi], 1)} ${unit}・差 ${fmtNum(offPct, 2)} %）`,
+  };
+}
+
+/**
+ * 計算区間内の全有効点を最小二乗回帰する（§9.1）。
+ * 端点 2 点だけを通す直線は照合用で、正式な再現線には使わない（§9.3）。
+ */
+function fitElasticSpan(lowerPoint, upperPoint, strain, stress, reasons) {
+  const idxs = [];
+  for (let i = lowerPoint.index; i <= upperPoint.index; i++) {
+    if (fin(strain[i]) && fin(stress[i])) idxs.push(i);
+  }
+  if (idxs.length < ELASTIC_TOL.minPoints) {
+    reasons.push(`計算区間内の有効点が ${idxs.length} 点で、${ELASTIC_TOL.minPoints} 点未満です`);
+    return null;
+  }
+  const fit = lsqFit(strain, stress, idxs);
+  if (!fit || !fin(fit.slope) || !fin(fit.intercept)) {
+    reasons.push("計算区間内の回帰が数値になりません");
+    return null;
+  }
+  if (!(fit.slope > 0)) {
+    reasons.push(`回帰の勾配が ${fmtNum(fit.slope, 3)} で、正の値になりません`);
+    return null;
+  }
+  return { slope: fit.slope, intercept: fit.intercept, r2: fit.r2, nPoints: fit.n };
+}
+
+/**
+ * 0.2% オフセット線と曲線の交点（§11）。
+ * 探索は計算区間上限点以降〜最大試験力点。正から 0 以下へ変わる区間を線形補間する。
+ * 見つからないときは「交点未検出」。**差が最小の点で代用しない**。
+ */
+function offsetCrossing(strain, stress, fromIndex, maxIndex, line) {
+  let prev = -1;
+  for (let i = Math.max(0, fromIndex); i <= maxIndex; i++) {
+    if (!fin(strain[i]) || !fin(stress[i])) continue;
+    const d = stress[i] - line(strain[i]);
+    if (prev >= 0) {
+      const dPrev = stress[prev] - line(strain[prev]);
+      if (dPrev > 0 && d <= 0) {
+        const t = dPrev === d ? 0 : dPrev / (dPrev - d);
+        return {
+          indexLo: prev, indexHi: i, interpolated: t > 0 && t < 1,
+          strain: strain[prev] + (strain[i] - strain[prev]) * t,
+          stress: stress[prev] + (stress[i] - stress[prev]) * t,
+        };
+      }
+    }
+    prev = i;
+  }
+  return null;
+}
+
+/**
+ * 弾性率計算区間の再現ひとそろい（§14.3 の順に組み立てる）。
+ * 使えないときは available:false と reasons（理由）を返し、画面はそれを出す。
+ */
+function buildElasticLineFile(inp, A, P) {
+  const src = inp.elastic;
+  const strain = A.series.strain, stress = A.series.stress;
+  const reasons = [];
+  const quality = [];
+  const out = { available: false, method: "file-elastic-span-regression",
+                source: src ? src.fmt : null, quality, reasons };
+
+  /* 1. 計算区間 */
+  if (!src) { reasons.push("変換元ファイルの情報がありません（CSV 入力では計算区間を復元できません）"); quality.push("unavailable"); return out; }
+  out.reference20 = src.reference20;                 // 参考値としてだけ持ち回る
+  out.reference60 = src.reference60;
+  if (!src.span) {
+    reasons.push("弾性率の計算区間を復元できません（弾性率_Standard のパラメータにも中間点にも区間がありません）");
+    quality.push("unavailable");
+    return out;
+  }
+  out.span = { ...src.span, source: src.spanSource };
+  if (src.spanFallback) { quality.push("fallback-midpoint"); reasons.push(`計算区間を ${src.spanSource} から復元しました`); }
+
+  /* 2. 標点距離（§8.2） */
+  let gauge = src.gauge, gaugeFrom = "変換元ファイルの「変位計1標点距離」";
+  if (!fin(gauge) || gauge <= 0) {
+    gauge = P.gaugeLength;
+    gaugeFrom = `解析設定のゲージ長 ${fmtNum(gauge, 1)} mm（ファイルに標点距離がありません。装置値の完全再現ではありません）`;
+    quality.push("manual-gauge");
+  }
+  out.gaugeLength = gauge;
+  out.gaugeFrom = gaugeFrom;
+  /* 断面積を手入力で決めているときも、再現の根拠として残す（§8.4） */
+  if (inp.areaManual) { quality.push("manual-area"); reasons.push(`断面積は${inp.areaBasis}`); }
+
+  /* 3. 波形の存在確認 */
+  if (!strain || !stress) { reasons.push("ひずみ・応力が揃っていないため再現できません"); quality.push("unavailable"); return out; }
+
+  /* 4-5. 区間端の実波形点 */
+  const maxIndex = A.max ? A.max.index : A.n - 1;
+  const lowerPoint = elasticSpanPoint(out.span, "lo", inp, strain, stress, maxIndex, reasons);
+  const upperPoint = elasticSpanPoint(out.span, "hi", inp, strain, stress, maxIndex, reasons);
+  out.lowerPoint = lowerPoint; out.upperPoint = upperPoint;
+  if (!lowerPoint || !upperPoint) { quality.push("unavailable"); return out; }
+
+  /* 6. 端点の順序（§7.4 の 5〜7） */
+  if (!(upperPoint.index > lowerPoint.index)) { reasons.push("計算区間上限の点が下限より前にあります"); quality.push("unavailable"); return out; }
+  if (!(upperPoint.strain > lowerPoint.strain)) { reasons.push("上限点のひずみが下限点より大きくありません"); quality.push("unavailable"); return out; }
+  if (!(upperPoint.stress > lowerPoint.stress)) { reasons.push("上限点の応力が下限点より大きくありません"); quality.push("unavailable"); return out; }
+
+  const worstPct = Math.max(lowerPoint.offPct, upperPoint.offPct);
+  if (worstPct > ELASTIC_TOL.endPct) {
+    quality.push("nearest-warning");
+    reasons.push(`計算区間の端点差率が ${fmtNum(worstPct, 2)} % で、基準 ${ELASTIC_TOL.endPct} % を超えています（計算は続けます）`);
+  }
+
+  /* 7-9. 区間内の全点を回帰して弾性率へ */
+  const fit = fitElasticSpan(lowerPoint, upperPoint, strain, stress, reasons);
+  if (!fit) { quality.push("unavailable"); return out; }
+  const m = fit.slope, b = fit.intercept;
+
+  out.available = true;
+  out.slopePerPct = m;
+  out.intercept = b;
+  out.r2 = fit.r2;
+  out.nPoints = fit.nPoints;
+  out.youngNmm2 = m * 100;
+  out.youngGpa = m / 10;
+  out.offsetPct = 0.2;
+  out.line = (e) => m * e + b;
+  /* 10. オフセット線。0.2 は「ひずみ %」であって耐力の 20% ではない（§10） */
+  out.offsetLine = (e) => m * (e - 0.2) + b;
+  /* 照合用の端点 2 点線（正式な再現線ではない・§9.3） */
+  const m2 = (upperPoint.stress - lowerPoint.stress) / (upperPoint.strain - lowerPoint.strain);
+  out.twoPoint = fin(m2) ? { slopePerPct: m2, youngNmm2: m2 * 100,
+    line: (e) => m2 * (e - lowerPoint.strain) + lowerPoint.stress } : null;
+
+  if (fin(fit.r2) && fit.r2 < ELASTIC_TOL.r2) {
+    reasons.push(`計算区間の回帰 R² が ${fit.r2.toFixed(5)} で、${ELASTIC_TOL.r2} を下回ります`);
+  }
+
+  /* 11. 交点は「計算区間上限点以降」から探す（§11.3） */
+  out.proofPoint = offsetCrossing(strain, stress, upperPoint.index, maxIndex, out.offsetLine);
+  if (!out.proofPoint) reasons.push("0.2% オフセット線と曲線の交点が見つかりません（交点未検出。近似では代用しません）");
+
+  /* 12. 正式値との照合（§12）。差は記録するだけで、正式値は書き換えない。 */
+  out.fileProofStress = src.rp;
+  out.deltaProofStress = out.proofPoint && fin(src.rp) ? out.proofPoint.stress - src.rp : NaN;
+  out.fileYoungNmm2 = fin(src.youngNmm2) ? src.youngNmm2 : (fin(src.youngGpa) ? src.youngGpa * 1000 : NaN);
+  out.deltaYoungPct = fin(out.fileYoungNmm2) && out.fileYoungNmm2 !== 0
+    ? ((out.youngNmm2 - out.fileYoungNmm2) / out.fileYoungNmm2) * 100 : NaN;
+  if (fin(out.deltaYoungPct) && Math.abs(out.deltaYoungPct) > ELASTIC_TOL.youngRelPct) {
+    reasons.push(`再現した弾性率がファイルの値と ${fmtNum(out.deltaYoungPct, 2)} % 違います`
+      + `（${fmtNum(out.youngNmm2, 0)} 対 ${fmtNum(out.fileYoungNmm2, 0)} N/mm²・警告のみ）`);
+  }
+
+  /* 13. 品質区分（§19。複数該当は配列のまま持つ） */
+  if (!quality.length) quality.push("exact");
+  return out;
 }
 
 /* ───────────────── 数値ユーティリティ ───────────────── */
@@ -356,6 +582,16 @@ function analyze(inp, P) {
     }
   }
 
+  /* --- 装置方式の弾性直線（別紙 §4）。解析方式（A.linear / A.offset02）とは別に持つ --- */
+  A.elasticLineFile = buildElasticLineFile(inp, A, P);
+  A.proof02File = A.elasticLineFile.available ? A.elasticLineFile.proofPoint : null;
+  if (!A.elasticLineFile.available) {
+    A.blocked.push({
+      what: "装置方式の弾性直線（ファイル計算区間）",
+      why: A.elasticLineFile.reasons[0] || "変換元ファイルから 20% 点・60% 点を復元できません",
+    });
+  }
+
   /* --- 14.4 伸び（破断ひずみ）方式A: 式①→② --- */
   A.fractureA = null;
   {
@@ -412,12 +648,22 @@ function analyze(inp, P) {
     A.blocked.push({ what: "伸び（島津法）", why: "時間データが無いため 1 秒間の低下率を評価できません" });
   }
 
-  /* 伸び = 採用した破断点のひずみ（方式A 優先） */
+  /* 伸び ＝ 変換元ファイルに記録された 破断点_変位(ひずみ) を真値として採る。
+     波形からの計算値（式①→②法／島津法）は参考で、破断記録の有無や丸めで数 pt ずれるため、
+     ファイル記録値がある限りそちらを使う（レポートの表と解析カードを一致させる）。
+     ファイルに値が無いときだけ、検出した破断点のひずみへ落とす（方式A 優先）。 */
   A.elongation = null;
   const frMain = A.fractureA || A.fractureB;
-  if (frMain && strain && fin(frMain.strain)) {
+  if (inp.fileElong && fin(inp.fileElong.value)) {
     A.elongation = {
-      value: frMain.strain,
+      value: inp.fileElong.value, src: "file",
+      method: "変換元ファイルの記録値",
+      index: frMain ? frMain.index : null,
+      basis: `「${inp.fileElong.label}」（装置が出した答え）`,
+    };
+  } else if (frMain && strain && fin(frMain.strain)) {
+    A.elongation = {
+      value: frMain.strain, src: "calc",
       method: A.fractureA ? "式①→②法" : "島津法",
       index: frMain.index, basis: frMain.basis,
     };
@@ -493,7 +739,12 @@ function analyze(inp, P) {
 
   A.ok = !!(A.rm || A.elongation);
 
-  /* --- 判定（§16.1）：色だけでなく必ず理由を文字で持たせる --- */
+  /* --- 判定（§16.1）：色だけでなく必ず理由を文字で持たせる ---
+   *
+   * 「不合格」とだけ出しても、なぜ・どこを見れば・何が悪いのかが分からない。
+   * 内訳の 1 件ずつに 原因の区分（cause）・次にすること（advice）・行き先（go）を
+   * 必ず持たせて、画面から追えるようにする（基本設計 §2・§6）。
+   */
   const checks = [];
   if (A.linear) {
     const r2 = A.linear.r2;
@@ -501,20 +752,52 @@ function analyze(inp, P) {
     checks.push({
       level: lv, label: "弾性直線域の直線性",
       detail: `R² = ${r2.toFixed(5)}（合格 ≥ ${P.linearityR2Ok} / 要確認 ≥ ${P.linearityR2Warn}）・${A.linear.nPoints} 点`,
+      cause: lv === "ok" ? null : CAUSE.config,
+      advice: lv === "ok" ? ""
+        : "線図で直線域を見てください。拾っている範囲がずれていれば、設定 › 直線域・0.2%耐力 のバンド（× 耐力応力）で直せます",
+      go: { tab: "charts", jump: "linear" }, settings: lv !== "ok",
     });
   } else {
-    checks.push({ level: "na", label: "弾性直線域の直線性", detail: "直線域を決定できないため未評価" });
+    checks.push({
+      level: "na", label: "弾性直線域の直線性", detail: "直線域を決定できないため未評価",
+      cause: CAUSE.data,
+      advice: "弾性域に取れる点が足りません。波形タブで応力・ひずみが最後まで入っているかを確認してください",
+      go: { tab: "waveform" },
+    });
   }
-  /* 合格範囲を持つ項目は、その範囲との突き合わせで合否を出す（レポートの合否判定と同じ） */
+  /* 合格範囲を持つ項目は、その範囲との突き合わせで合否を出す（レポートの合否判定と同じ）。
+   *
+   * 判定に使う測定値は、変換元ファイルが記録している値（inp.judgeValues＝レポートの表と
+   * 同じ値）。装置側で設定していない項目はファイルに値が無いので、**判定しない**。
+   * ここで計算値へ落とすと、設定していない項目を勝手に見て「不合格」にしてしまう。
+   * 記録値を持たない CSV 入力だけは、解析の計算値で判定する（それしか測定値が無いため）。
+   */
+  const useFileValues = !!inp.judgeValues;
   for (const spec of JUDGE_SPECS) {
     const jr = A.judge[spec.key];
     if (!jr) continue;
-    const v = spec.value(A);
-    const r = rangeCheck(v, jr.lo, jr.hi);
+    const v = useFileValues ? inp.judgeValues[spec.key] : spec.value(A);
     const where = jr.src === "file" ? `変換元ファイルの「${jr.label}」` : "設定値（控え）";
+    const band = `許容範囲 ${spec.fmt(jr.lo)}〜${spec.fmt(jr.hi)} ${spec.unit}／${where}`;
+    if (!fin(v)) {
+      /* 判定しない。skip を立てて、全体の合否にも効かせない。 */
+      checks.push({
+        level: "na", skip: true, label: spec.label,
+        detail: `${useFileValues ? "変換元ファイルに測定値が無いため" : "測定値を算出できないため"}判定しません（${band}）`,
+        cause: null, advice: "", go: { tab: "report" },
+      });
+      continue;
+    }
+    const r = rangeCheck(v, jr.lo, jr.hi);
     checks.push({
       level: r.level, label: spec.label,
-      detail: `${fin(v) ? `${spec.fmt(v)} ${spec.unit}` : r.label}（許容範囲 ${spec.fmt(jr.lo)}〜${spec.fmt(jr.hi)} ${spec.unit}／${where}）`,
+      detail: `${spec.fmt(v)} ${spec.unit}（${band}）`,
+      cause: r.level === "ng" ? CAUSE.test : null,
+      advice: r.level === "ng"
+        ? `装置が記録した ${spec.label} が、同じファイルに入っている判定範囲の外です。`
+          + "データの読み違いではなく試験そのものの結果なので、試験速度の設定と試験片の寸法を確認してください"
+        : "",
+      go: { tab: "report" },
     });
   }
   const missing = [];
@@ -522,14 +805,20 @@ function analyze(inp, P) {
   if (!A.yieldV) missing.push("耐力（速度法）");
   if (!A.offset02) missing.push("0.2% 耐力");
   if (!A.elongation) missing.push("伸び");
+  const mLv = missing.length === 0 ? "ok" : (missing.length >= 3 ? "ng" : "warn");
   checks.push({
-    level: missing.length === 0 ? "ok" : (missing.length >= 3 ? "ng" : "warn"),
-    label: "主要値の算出",
+    level: mLv, label: "主要値の算出",
     detail: missing.length === 0 ? "引張強さ・耐力・0.2%耐力・伸びをすべて算出" : `未算出: ${missing.join(" / ")}`,
+    cause: mLv === "ok" ? null : CAUSE.data,
+    advice: mLv === "ok" ? ""
+      : `${missing.length} 件が算出できていません。解析タブの「算出できなかったもの」に 1 件ずつ理由が出ます`
+        + "（断面積とゲージ長が入っているかも、同じタブで確かめられます）",
+    go: { tab: "analysis" },
   });
   const rank = { ok: 0, warn: 1, ng: 2, na: 1 };
   let worst = "ok";
-  for (const c of checks) if (rank[c.level] > rank[worst]) worst = c.level === "na" ? "warn" : c.level;
+  /* skip = 判定していない項目。合否を左右させない（未設定の項目で落とさないため） */
+  for (const c of checks) if (!c.skip && rank[c.level] > rank[worst]) worst = c.level === "na" ? "warn" : c.level;
   A.verdict = {
     level: A.ok ? worst : "na",
     label: !A.ok ? "解析なし" : worst === "ok" ? "合格" : worst === "warn" ? "要確認" : "不合格",
@@ -556,5 +845,34 @@ function analysisRows(A) {
   add("ひずみ速度②（塑性）", A.strainRate2 ? A.strainRate2.value.toExponential(3) : "", "/sec", A.strainRate2 ? A.strainRate2.basis : "算出不可");
   add("直線性 R²", A.linear ? A.linear.r2.toFixed(5) : "", "−", A.linear ? A.linear.basis : "算出不可");
   add("判定", A.verdict ? A.verdict.label : "", "−", A.verdict ? A.verdict.checks.map((c) => `${c.label}: ${c.detail}`).join(" / ") : "");
+
+  /* 弾性率計算区間の再現（別紙 §18）。正式値・再現値・差を別項目で出す。 */
+  const L = A.elasticLineFile;
+  const ok = L && L.available;
+  const u = ok && L.span.kind === "stress" ? "N/mm2" : "N";
+  const why = ok ? L.span.source : (L && L.reasons[0]) || "算出不可";
+  add("弾性率計算区間の種類", ok ? (L.span.kind === "stress" ? "応力" : "試験力") : "", "", why);
+  add("弾性率計算区間下限", ok ? String(L.span.lo) : "", u, why);
+  add("弾性率計算区間上限", ok ? String(L.span.hi) : "", u, why);
+  add("計算区間下限点番号", ok ? String(L.lowerPoint.index + 1) : "", "point", ok ? L.lowerPoint.basis : why);
+  add("計算区間上限点番号", ok ? String(L.upperPoint.index + 1) : "", "point", ok ? L.upperPoint.basis : why);
+  add("計算区間下限点ひずみ", ok ? fmtNum(L.lowerPoint.strain, 4) : "", "%", ok ? L.gaugeFrom : why);
+  add("計算区間上限点ひずみ", ok ? fmtNum(L.upperPoint.strain, 4) : "", "%", ok ? L.gaugeFrom : why);
+  add("計算区間下限点応力", ok ? fmtNum(L.lowerPoint.stress, 2) : "", "N/mm2", why);
+  add("計算区間上限点応力", ok ? fmtNum(L.upperPoint.stress, 2) : "", "N/mm2", why);
+  add("弾性率計算点数", ok ? String(L.nPoints) : "", "point", ok ? "計算区間内の全有効点で最小二乗回帰" : why);
+  add("弾性直線R²", ok ? L.r2.toFixed(5) : "", "−", why);
+  add("再現弾性率", ok ? fmtNum(L.youngNmm2, 0) : "", "N/mm2", ok ? "回帰勾配 × 100（ひずみ % 表記のため）" : why);
+  add("ファイル弾性率", L && fin(L.fileYoungNmm2) ? fmtNum(L.fileYoungNmm2, 0) : "", "N/mm2", "変換元ファイルの記録値（正式値）");
+  add("弾性率差率", L && fin(L.deltaYoungPct) ? fmtNum(L.deltaYoungPct, 3) : "", "%", "（再現 − ファイル）÷ ファイル × 100");
+  add("再現0.2%耐力", ok && L.proofPoint ? fmtNum(L.proofPoint.stress, 1) : "", "N/mm2",
+    ok ? (L.proofPoint ? "オフセット線と曲線の交点（線形補間）" : "交点未検出") : why);
+  add("ファイル0.2%耐力", L && fin(L.fileProofStress) ? fmtNum(L.fileProofStress, 1) : "", "N/mm2", "変換元ファイルの記録値（正式値）");
+  add("0.2%耐力差", L && fin(L.deltaProofStress) ? fmtNum(L.deltaProofStress, 2) : "", "N/mm2", "再現交点 − ファイル正式値");
+  add("端点選定品質", L ? L.quality.join(" / ") : "", "−", L && L.reasons.length ? L.reasons.join(" / ") : "");
+  add("計算区間取得元", ok ? L.span.source : "", "−", why);
+  /* 参考値。計算区間とは別物なので、列名でも「参考値」と明示する（§18） */
+  add("参考値 耐力×0.2", L && fin(L.reference20) ? fmtNum(L.reference20, 2) : "", "N/mm2", "耐力応力の 20%。計算区間ではありません");
+  add("参考値 耐力×0.6", L && fin(L.reference60) ? fmtNum(L.reference60, 2) : "", "N/mm2", "耐力応力の 60%。計算区間ではありません");
   return rows;
 }

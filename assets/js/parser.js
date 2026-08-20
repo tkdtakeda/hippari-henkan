@@ -40,7 +40,6 @@ const REPORT_FIELDS = [
   ["耐力点試験力",          "N",      ["耐力点1_試験力"]],
 ];
 
-const MARKER = Uint8Array.from([0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01]);
 const CHANNELS = [["Time_sec", -8], ["Stroke_mm", -4], ["Force_N", 29], ["Extensometer_mm", 37]];
 const BYTES_試験条件 = Uint8Array.from([0xE8, 0xA9, 0xA6, 0xE9, 0xA8, 0x93, 0xE6, 0x9D, 0xA1, 0xE4, 0xBB, 0xB6]);
 const BYTES_TXVFileVersion = Uint8Array.from([...("TXVFileVersion")].map((c) => c.charCodeAt(0)));
@@ -56,7 +55,29 @@ function detectFormat(data, filename) {
   return { fmt: "xtux", basis: `拡張子 ${ext || "(なし)"} による判定（マジック未検出）` };
 }
 
-/* ───────────────── 結果サマリー（§5.1 xtux：順序構造） ───────────────── */
+/* ───────────────── 結果サマリー（§5.1 xtux：順序構造） ─────────────────
+ * ヘッダ（名前／パラメータ／合否判定／単位）のあとに「ラベル行」が並び、その後ろに
+ * 「値の列」が同じ順で並ぶ。ラベル行は単位語（%, N, N/mm2 …）で 1 行ずつ区切れる。
+ *
+ * ★ パラメータの中には数値が入る（例: 破断点_変位(ひずみ) の「MAXの%レベル 70」）。
+ *   数値を見たら即「値の列の始まり」と見なすと、そこでラベル行の収集が止まり、
+ *   破断点_変位(ひずみ) の行そのものが落ちて、以降の値も 1 つずつずれる。
+ *   → 行の途中に出る数値はパラメータとして扱う（下の isParamNumber）。
+ */
+
+/**
+ * 位置 k の数値トークンが「行の途中のパラメータ」かどうか。
+ * パラメータの数値は同じ行の単位語がすぐ後ろに来る（MAXの%レベル → 70 → %）。
+ * 値の列に入ったあとは数値が並ぶだけで、単位語は現れない。
+ */
+function isParamNumber(toks, k, lookahead = 3) {
+  for (let q = k + 1; q < Math.min(toks.length, k + 1 + lookahead); q++) {
+    if (UNITS.has(toks[q])) return true;
+    if (toks[q] === "名前") return false;
+  }
+  return false;
+}
+
 function parseResultsXtux(tokens) {
   const toks = tokens.map((t) => t.text);
   const res = [];
@@ -70,7 +91,10 @@ function parseResultsXtux(tokens) {
       let cur = [];
       while (k < toks.length) {
         const t = toks[k];
-        if (NUM_RE.test(t) || t === "名前") break;
+        if (t === "名前") break;
+        /* 行の切れ目（cur が空）に立っている数値だけが「値の列」の始まり。
+           行の途中の数値は、その行のパラメータとして取り込む。 */
+        if (NUM_RE.test(t) && !(cur.length && isParamNumber(toks, k))) break;
         cur.push(t);
         if (UNITS.has(t)) {
           rows.push([cur[0], t, cur.slice(1, -1).join(" ").trim()]);
@@ -110,43 +134,45 @@ function nearestUnit(unitsSorted, voff) {
   return unit;
 }
 /**
- * 値アンカー ([\x01-\x0f])(-?[0-9][0-9.\-]{0,14})\x00[\x01\x02]\x00\x00\x00 を
- * バイト列上で直接走査する（group1 の長さ整合チェック込み ＝ Python 版と等価）。
+ * 値アンカーが位置 i から始まっていれば { val, na } を返す（違えば null）。
+ *   数値   … [長さ 01–0F][ -?[0-9][0-9.\-]{0,14} ] 00 [01|02] 00 00 00
+ *   未算出 … [03]        [ "-.-" ]                  00 [01|02] 00 00 00
+ * 長さプレフィックスと値の長さが合っていることまで見る（Python 版の group1 照合と等価）。
  */
+function valueAnchorAt(d, i) {
+  const L = d[i];
+  if (L === 0x03 && i + 8 < d.length &&
+      d[i + 1] === 0x2D && d[i + 2] === 0x2E && d[i + 3] === 0x2D &&
+      d[i + 4] === 0x00 && (d[i + 5] === 0x01 || d[i + 5] === 0x02) &&
+      d[i + 6] === 0x00 && d[i + 7] === 0x00 && d[i + 8] === 0x00) {
+    return { val: "N/A", na: true };                         // 装置が「未算出」と書いた値
+  }
+  if (L < 0x01 || L > 0x0F) return null;
+  const end = i + 1 + L;
+  if (end + 5 > d.length) return null;
+  // 末尾 \x00 [\x01|\x02] \x00 \x00 \x00
+  if (d[end] !== 0x00 || (d[end + 1] !== 0x01 && d[end + 1] !== 0x02) ||
+      d[end + 2] !== 0x00 || d[end + 3] !== 0x00 || d[end + 4] !== 0x00) return null;
+  // 値本体 -?[0-9][0-9.\-]{0,14}
+  let p = i + 1;
+  if (d[p] === 0x2D) p++;                                    // 先頭の '-'
+  if (p >= end || !isDigit(d[p])) return null;               // 続く 1 文字は数字
+  for (p++; p < end; p++) {
+    const b = d[p];
+    if (!(isDigit(b) || b === 0x2E || b === 0x2D)) return null;
+  }
+  let s = "";
+  for (let q = i + 1; q < end; q++) s += String.fromCharCode(d[q]);
+  return { val: s, na: false };
+}
+
+/** 値アンカーをバイト列上で直接走査する（オフセット昇順）。 */
 function scanVtavAnchors(d) {
   const hits = [];
-  const n = d.length;
-  for (let i = 0; i + 6 < n; i++) {
-    const L = d[i];
-    if (L < 0x01 || L > 0x0F) continue;
-    const end = i + 1 + L;
-    if (end + 5 > n) continue;
-    // 末尾 \x00 [\x01|\x02] \x00 \x00 \x00
-    if (d[end] !== 0x00 || (d[end + 1] !== 0x01 && d[end + 1] !== 0x02) ||
-        d[end + 2] !== 0x00 || d[end + 3] !== 0x00 || d[end + 4] !== 0x00) continue;
-    // 値本体 -?[0-9][0-9.\-]{0,14}
-    let p = i + 1;
-    if (d[p] === 0x2D) p++;                                  // 先頭の '-'
-    if (p >= end || !isDigit(d[p])) continue;                // 続く 1 文字は数字
-    p++;
-    let ok = true;
-    for (; p < end; p++) {
-      const b = d[p];
-      if (!(isDigit(b) || b === 0x2E || b === 0x2D)) { ok = false; break; }
-    }
-    if (!ok) continue;
-    let s = "";
-    for (let q = i + 1; q < end; q++) s += String.fromCharCode(d[q]);
-    hits.push({ off: i, val: s, na: false });
+  for (let i = 0; i < d.length; i++) {
+    const a = valueAnchorAt(d, i);
+    if (a) hits.push({ off: i, val: a.val, na: a.na });
   }
-  // 未算出 (N/A) アンカー \x03 "-.-" \x00 [\x01\x02] \x00\x00\x00
-  for (let i = 0; i + 8 < n; i++) {
-    if (d[i] !== 0x03 || d[i + 1] !== 0x2D || d[i + 2] !== 0x2E || d[i + 3] !== 0x2D) continue;
-    if (d[i + 4] !== 0x00 || (d[i + 5] !== 0x01 && d[i + 5] !== 0x02) ||
-        d[i + 6] !== 0x00 || d[i + 7] !== 0x00 || d[i + 8] !== 0x00) continue;
-    hits.push({ off: i, val: "N/A", na: true });
-  }
-  hits.sort((a, b) => a.off - b.off);
   return hits;
 }
 function parseResultsVtav(data, tokens) {
@@ -176,6 +202,246 @@ function parseResultsVtav(data, tokens) {
 }
 
 /* ============================================================================
+ * 破断点_変位(ひずみ)（＝「伸び」）の抜き出し
+ *
+ * 【大前提】「伸び」の真値は、ファイルに記録された結果サマリー値 `破断点_変位(ひずみ)`。
+ * 波形からの計算値（式①→②法／島津法）は参考扱いで、ファイル記録値がある限り
+ * そちらを優先する（計算値は破断記録の有無や丸めで数 pt ずれる）。
+ *
+ * 同じラベル名でも vtav と xtux で格納構造がまったく違うので、判定後に使い分ける。
+ *
+ *  vtav … UTF-8・バイトアンカー方式
+ *    1. 起点ラベル: UTF-8 の `破断点_変位(ひずみ)`（[1バイト長 0x1B][UTF-8値]）を検索
+ *    2. 結果領域に限定: [最初の日時オフセット, 「試験条件」オフセット)
+ *       ← テンプレート側に同名ラベル（値 "0"）があるので、これを外すのが誤検出防止の要
+ *    3. 値アンカー走査: ラベルの後 200 バイト以内で最初に現れる値アンカー
+ *    4. 除外: 値 "0"（テンプレートの初期値）。パラメータの `70`（MAXの%レベル）は
+ *       アンカー末尾形ではないので自然に外れる
+ *
+ *  xtux … UTF-16LE・順序構造方式
+ *    バイトアンカー走査は使えない。ヘッダの後ろに「ラベル列 → 数値列」が同順に並ぶので、
+ *    parseResultsXtux が組み立てた結果サマリー（i 番目のラベル ← i 番目の数値）から拾う。
+ * ==========================================================================*/
+const ELONG_LABELS = ["破断点_変位(ひずみ)", "破断点_At"];
+const ELONG_WINDOW = 200;                 // vtav: ラベル位置から値アンカーを探す窓（バイト）
+/* 破断点のひずみは % で記録される。ただし vtav の文字列ウォーカーは英数字も漢字も含まない
+   単独記号を落とすので、"%" はトークンに出てこない（＝近傍から拾うと隣の "mm" などを
+   拾ってしまう）。この項目の単位はラベルから確定するので、ここで補う。 */
+const ELONG_UNIT = "%";
+
+/** vtav: 結果領域の中で起点ラベルを探し、その後ろの最初の値アンカーを読む。 */
+function findElongVtav(data) {
+  const enc = new TextEncoder();
+  let auditStart = findBytes(data, BYTES_試験条件);
+  if (auditStart < 0) auditStart = data.length;
+  const dt = findDateTimeOffset(data);
+  const resultsStart = dt >= 0 ? dt : 0;
+
+  for (const label of ELONG_LABELS) {
+    const body = enc.encode(label);
+    const tlv = new Uint8Array(body.length + 1);
+    tlv[0] = body.length;                                    // [1バイト長][UTF-8値]
+    tlv.set(body, 1);
+    /* TLV ごとの一致を先に見て、外れたときだけ生の文字列一致で拾う */
+    for (const needle of [tlv, body]) {
+      let from = 0;
+      for (;;) {
+        const j = findBytes(data, needle, from);
+        if (j < 0) break;
+        from = j + 1;
+        /* 結果領域の外（テンプレート側の同名ラベル）は見ない */
+        if (!(resultsStart <= j && j < auditStart)) continue;
+        const limit = Math.min(data.length, j + ELONG_WINDOW);
+        for (let i = j + needle.length; i < limit; i++) {
+          const a = valueAnchorAt(data, i);
+          if (!a) continue;
+          if (a.na) return { label, value: "", unit: ELONG_UNIT, at: i, na: true };
+          if (a.val === "0") continue;                       // テンプレートの初期値は値ではない
+          return { label, value: a.val, unit: ELONG_UNIT, at: i, na: false };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** 結果サマリーから「伸び」の記録値を拾う（xtux の本筋・vtav の控え）。 */
+function elongFromResults(results) {
+  for (const label of ELONG_LABELS) {
+    const r = (results || []).find((x) => x.label === label && NUM_RE.test(String(x.value)));
+    if (r) return { label, value: String(r.value), unit: r.unit || ELONG_UNIT, param: r.param || "", at: null, na: false };
+  }
+  return null;
+}
+
+/** ファイルが記録している「伸び」を、フォーマットごとの方式で取り出す。 */
+function extractElongation(fmt, data, results) {
+  if (fmt === "vtav") {
+    const hit = findElongVtav(data);
+    if (hit && !hit.na) return { ...hit, src: "anchor" };
+    const fb = elongFromResults(results);
+    if (fb) return { ...fb, src: "results" };
+    return hit ? { ...hit, src: "anchor" } : null;           // 未算出（-.-）はそのまま返す
+  }
+  const r = elongFromResults(results);
+  return r ? { ...r, src: "results" } : null;
+}
+
+/**
+ * 抜き出した「伸び」を結果サマリーに反映する。
+ * レポートの表・グラフの ×・解析カードはすべて results 経由で同じ値を読むので、
+ * ここで 1 か所に集めておけば、表とカードが食い違わない。
+ */
+function mergeElongation(results, rec) {
+  if (!results || !rec || rec.na || !NUM_RE.test(String(rec.value))) return;
+  const cur = results.find((x) => x.label === rec.label);
+  if (!cur) {
+    results.push({ label: rec.label, unit: rec.unit, value: rec.value, param: rec.param || "" });
+    return;
+  }
+  /* バイトアンカーで取り直した値が正（順序構造から来た値はそのまま）。
+     単位も、近傍から拾った "mm" などではなくラベルから確定する % に直す。 */
+  if (rec.src === "anchor") {
+    cur.value = rec.value;
+    cur.unit = rec.unit;
+  }
+}
+
+/* ============================================================================
+ * 弾性率計算区間の抽出（別紙: 弾性率計算区間および 0.2% 耐力線 再現仕様書 §6・§13）
+ *
+ * 装置は「弾性率をどの区間で求めたか」をファイルに残している。その区間の実波形点を
+ * 回帰すれば、装置と同じ弾性直線が引ける。ここでは波形に触らず、区間の数値だけを
+ * 正規化する。
+ *
+ * ★「0.2」は **ひずみ 0.2% のオフセット量**であって、耐力の 20% ではない。
+ *   `耐力×0.2` / `耐力×0.6` は耐力応力に対する倍率で、計算区間とは別物なので、
+ *   参考値としてだけ持ち、正式な計算端点には使わない（§3.3）。
+ *
+ * 取得の優先順位（§6.2）:
+ *   1. 弾性率_Standard のパラメータの試験力区間
+ *   2. 同じく応力区間
+ *   3. 中間点1・中間点2 の試験力（番号は固定せず、数値の大小で下限・上限を決める）
+ *   4. 中間点1・中間点2 の応力（同上）
+ *   5. 復元不可
+ * ==========================================================================*/
+
+/** 結果サマリーから、候補ラベルの順に最初の 1 件を返す */
+function resultOf(results, labels) {
+  for (const lb of labels) {
+    const r = (results || []).find((x) => x.label === lb);
+    if (r) return r;
+  }
+  return null;
+}
+/** 同上。数値だけが欲しいとき（取れなければ NaN） */
+function resultNum(results, labels) {
+  const r = resultOf(results, labels);
+  const v = r ? parseFloat(String(r.value).replace(/,/g, "")) : NaN;
+  return isFinite(v) ? v : NaN;
+}
+
+/**
+ * 弾性率_Standard のパラメータから計算区間を読む（§6.1）。
+ *   「試験力 4667 - 14001 N」   → { kind:"force",  lo:4667, hi:14001, unit:"N" }
+ *   「応力 28.5 - 85.6 N/mm2」  → { kind:"stress", lo:28.5, hi:85.6,  unit:"N/mm2" }
+ * 区切りは -／–／〜／~ のどれでもよい。末尾の単位は落ちていても見出し語から決まる。
+ */
+const SPAN_RE = /(試験力|応力|荷重)\s*([-+]?[\d.]+)\s*[-–—〜~]\s*([-+]?[\d.]+)/;
+function parseElasticSpan(param) {
+  const text = String(param || "").trim();
+  if (!text) return null;
+  const m = SPAN_RE.exec(text);
+  if (!m) return null;
+  const lo = parseFloat(m[2]), hi = parseFloat(m[3]);
+  if (!isFinite(lo) || !isFinite(hi) || !(hi > lo)) return null;
+  const kind = m[1] === "応力" ? "stress" : "force";
+  return { kind, lo, hi, unit: kind === "stress" ? "N/mm2" : "N", text };
+}
+
+/** 中間点 1 件（試験力・応力・変位計1・時間）。無い項目は NaN のまま。 */
+function midPointOf(results, prefix) {
+  const grab = (words) => {
+    const r = (results || []).find((x) => x.label.startsWith(prefix) && words.some((w) => x.label.includes(w)));
+    const v = r ? parseFloat(String(r.value).replace(/,/g, "")) : NaN;
+    return isFinite(v) ? v : NaN;
+  };
+  return {
+    label: prefix,
+    force: grab(["試験力"]),
+    stress: grab(["応力"]),
+    disp: grab(["変位計"]),
+    time: grab(["時間"]),
+  };
+}
+
+/** 中間点 2 件から計算区間を組み立てる（番号ではなく数値の大小で上下を決める・§6.3） */
+function spanFromMidPoints(mid1, mid2, key, kind, unit, text) {
+  const a = mid1[key], b = mid2[key];
+  if (!fin(a) || !fin(b) || a === b) return null;
+  return { kind, lo: Math.min(a, b), hi: Math.max(a, b), unit, text };
+}
+
+/**
+ * vtav の結果サマリーはパラメータ欄を持たない（値アンカー方式で label/value しか出ない）。
+ * 計算区間の文字列は 弾性率_Standard のラベル近くに素の文字列として置かれているので、
+ * ラベルの前後の窓から「区間らしいトークン」を拾って、xtux の param と同じ扱いにする。
+ */
+function spanFromTokens(tokens, label = "弾性率_Standard", window = 12) {
+  const list = tokens || [];
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].text !== label) continue;
+    /* ラベルの後ろを先に見る（パラメータは後ろに並ぶことが多い） */
+    for (const range of [[i + 1, Math.min(list.length, i + window)], [Math.max(0, i - window), i]]) {
+      for (let j = range[0]; j < range[1]; j++) {
+        const sp = parseElasticSpan(list[j].text);
+        if (sp) return sp;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * 弾性率計算区間と照合用の値をまとめて取り出す（§13.1）。
+ * どこから取った区間かは spanSource に残し、画面と CSV に出す。
+ */
+function extractElasticSource(fmt, results, tokens) {
+  const std = resultOf(results, ["弾性率_Standard"]);
+  const mid1 = midPointOf(results, "中間点1");
+  const mid2 = midPointOf(results, "中間点2");
+
+  let span = parseElasticSpan(std ? std.param : "");
+  let spanSource = span ? "弾性率_Standard の計算区間" : "";
+  let fallback = false;
+
+  if (!span) {
+    span = spanFromTokens(tokens);
+    if (span) spanSource = "弾性率_Standard の計算区間";
+  }
+
+  if (!span) {
+    span = spanFromMidPoints(mid1, mid2, "force", "force", "N", "中間点1・中間点2の試験力");
+    if (span) { spanSource = "中間点1・中間点2の試験力"; fallback = true; }
+  }
+  if (!span) {
+    span = spanFromMidPoints(mid1, mid2, "stress", "stress", "N/mm2", "中間点1・中間点2の応力");
+    if (span) { spanSource = "中間点1・中間点2の応力"; fallback = true; }
+  }
+
+  return {
+    fmt, span, spanSource, spanFallback: fallback, mid1, mid2,
+    rp: resultNum(results, ["耐力点1_応力", "耐力点1Rp"]),
+    youngNmm2: resultNum(results, ["弾性率_Standard"]),
+    youngGpa: resultNum(results, ["ヤング率"]),
+    gauge: resultNum(results, ["変位計1標点距離"]),
+    /* 参考値。計算区間・弾性直線・0.2% オフセットの算出には使わない（§3.3・§23） */
+    reference20: resultNum(results, ["耐力×0.2"]),
+    reference60: resultNum(results, ["耐力×0.6"]),
+  };
+}
+
+/* ============================================================================
  * 合否判定の「合格範囲」抽出（別紙: vtav/xtux 合格範囲抽出ルール仕様）
  *
  * 構造（全ファイル共通・20 バイト）:
@@ -192,15 +458,20 @@ function parseResultsVtav(data, tokens) {
  * ==========================================================================*/
 const RANGE_MARK = Uint8Array.from([0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
 const RANGE_WINDOW = 800;                 // ラベル位置から前方に見る窓（バイト）
+/* min / max は「上限として現実にあり得る値」の窓（ファイルの単位のまま）。
+ * 判定を設定していない項目では、信号チャンネル定義などのバイト列が
+ * たまたま「合格範囲らしく」見えることがある（実測では 弾性率 に
+ * 1.2e-7〜3.4e-7 GPa が入り、ちょうど (0,0) ではないので素通りしていた）。
+ * 桁で弾く。窓は実際の規格値から十分に余裕を取る。 */
 const PASS_RANGE_ITEMS = [
-  { key: "ramp",  labels: ["応力増加速度"],         unit: "MPa/s"  },
-  { key: "srate", labels: ["歪速度"],               unit: "/sec"   },
-  { key: "young", labels: ["ヤング率", "弾性率"],   unit: "GPa"    },  // vtav=ヤング率 / xtux=弾性率
-  { key: "cross", labels: ["クロスヘッド変異速度"], unit: "mm/min" },
+  { key: "ramp",  labels: ["応力増加速度"],         unit: "MPa/s",  min: 1e-3, max: 1e5 },
+  { key: "srate", labels: ["歪速度"],               unit: "/sec",   min: 1e-8, max: 1e2 },
+  { key: "young", labels: ["ヤング率", "弾性率"],   unit: "GPa",    min: 1e-2, max: 1e4 },  // vtav=ヤング率 / xtux=弾性率
+  { key: "cross", labels: ["クロスヘッド変異速度"], unit: "mm/min", min: 1e-4, max: 1e5 },
 ];
 
 /** §3 有効判定フィルタ。1 つでも外れたら「合格範囲ではない」として捨てる。 */
-function validPassRange(d, i) {
+function validPassRange(d, i, item) {
   if (i + 12 > d.length) return null;
   const dv = new DataView(d.buffer, d.byteOffset + i, 12);
   const lo = dv.getFloat32(0, true), mid = dv.getFloat32(4, true), hi = dv.getFloat32(8, true);
@@ -209,6 +480,8 @@ function validPassRange(d, i) {
   if (!(lo < hi)) return null;                                  // 2. 下限 < 上限
   if (!(lo > -1e5 && lo < 1e6 && hi < 1e6)) return null;        // 4. 桁が妥当
   if (lo === 0 && hi === 0) return null;                        // 5. (0,0) は未設定
+  /* 6. 上限が、その項目としてあり得る桁か（ほぼ 0 のゴミを弾く） */
+  if (item && !(hi >= item.min && hi <= item.max)) return null;
   return { lo, hi, mid };
 }
 
@@ -219,10 +492,10 @@ function validPassRange(d, i) {
  * 取ると、項目が近接して並んでいるときに隣の項目の範囲を拾ってしまう（実測で確認）。
  * 打ち切ったときは、その出現位置は諦めて次の出現位置を見る。
  */
-function findPassRange(data, labels, others) {
+function findPassRange(data, item, others) {
   const enc = new TextEncoder();
   const otherNeedles = (others || []).map((x) => enc.encode(x));
-  for (const label of labels) {
+  for (const label of item.labels) {
     const needle = enc.encode(label);
     let idx = 0;
     for (;;) {
@@ -238,7 +511,7 @@ function findPassRange(data, labels, others) {
       for (;;) {
         const m = findBytes(win, RANGE_MARK, k);
         if (m < 0 || m >= limit) break;
-        const r = validPassRange(data, j + m + 8);
+        const r = validPassRange(data, j + m + 8, item);
         if (r) return { ...r, label, at: j + m };
         k = m + 1;
       }
@@ -254,7 +527,7 @@ function extractPassRanges(data) {
   for (const it of PASS_RANGE_ITEMS) {
     /* 自分以外の項目名は「窓の打ち切り」に使う（隣の項目の範囲を拾わないため） */
     const others = PASS_RANGE_ITEMS.filter((x) => x !== it).flatMap((x) => x.labels);
-    const r = findPassRange(data, it.labels, others);
+    const r = findPassRange(data, it, others);
     if (r) out[it.key] = { lo: r.lo, hi: r.hi, label: r.label, unit: it.unit, at: r.at };
   }
   return out;
@@ -311,10 +584,31 @@ function supplementXtuxDims(cond, u8tokens) {
 }
 
 /* ───────────────── 生波形（§5.5） ───────────────── */
+
+/**
+ * 波形マーカー 01 00 00 00 [00|01] 01 01 を走査する。
+ * 5 バイト目は破断前 = 0x00 / 破断後 = 0x01 のフラグで、チャネルのオフセットも
+ * レコード周期（stride）も前後で変わらない。0x00 固定で探すと、応力がゼロへ落ちて
+ * いく破断後のレコードが丸ごと欠落する（線図が破断点でぷっつり切れる）ため、
+ * ここでは両方を受理する。緩めたことで増える偽マーカーは stride フィルタが弾く。
+ */
+function findWaveMarkers(d) {
+  const out = [];
+  const n = d.length - 6;
+  for (let i = 0; i < n; i++) {
+    if (d[i] === 0x01 && d[i + 1] === 0x00 && d[i + 2] === 0x00 &&
+        d[i + 3] === 0x00 && (d[i + 4] === 0x00 || d[i + 4] === 0x01) &&
+        d[i + 5] === 0x01 && d[i + 6] === 0x01) {
+      out.push(i);
+    }
+  }
+  return out;
+}
+
 function extractWaveform(data) {
-  const pos = findAllBytes(data, MARKER);
+  const pos = findWaveMarkers(data);
   if (pos.length < 20) {
-    return { ok: false, reason: `波形マーカー（01 00 00 00 00 01 01）の検出数が ${pos.length} 個（20 個未満）`, points: 0 };
+    return { ok: false, reason: `波形マーカー（01 00 00 00 [00/01] 01 01）の検出数が ${pos.length} 個（20 個未満）`, points: 0 };
   }
   const counts = new Map();
   for (let i = 0; i < pos.length - 1; i++) {
